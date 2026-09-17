@@ -34,7 +34,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.30`
+- Solution version: `1.0.0.31`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -87,7 +87,7 @@ With `filterDisplay="menu"` PrimeReact writes the typed value into `constraints[
 
 `helpers/ExcelExport.ts` builds the workbook without adding dependencies: it writes `[Content_Types].xml`, `_rels/.rels`, `xl/workbook.xml`, `xl/_rels/workbook.xml.rels`, `xl/styles.xml` and `xl/worksheets/sheet1.xml` (inline strings, bold header) into a ZIP container whose entries are deflated with the browser `CompressionStream` (`deflate-raw`) and stored uncompressed when that API is unavailable.
 
-`DataGrid.getRecordsForExport()` reproduces what the grid shows: the existing global search plus the per-column constraints, evaluated with `FilterService` from `primereact/api` so the match modes stay identical to PrimeReact. The export contains every row loaded in the control that matches the filters, formatted with the same `FieldConfigurations`, using only the currently visible columns.
+`DataGrid.getRecordsForExport()` reproduces what the grid shows: the existing global search plus the per-column constraints, evaluated with `FilterService` from `primereact/api` so the match modes stay identical to PrimeReact. When a constraint carries **no `matchMode`**, the fallback must be the column's own mode (`FilterMatchMode.CONTAINS`, as declared in the `Column`), never `STARTS_WITH`: PrimeReact filters those constraints with `contains`, so any other default makes the file disagree with the grid (that bug exported 1 row while the grid showed 23). The export contains every row loaded in the control that matches the filters, formatted with the same `FieldConfigurations`, using only the currently visible columns (the same `getVisibleColumns()` the grid renders, so the two lists cannot diverge). `exportToExcel()` logs `[ModernDataGrid] exportando a Excel { columnas, filas, filasCargadas }`.
 
 ## Localization
 
@@ -216,7 +216,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.30`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.31`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -229,7 +229,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.43`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.44`, is separate from the four-part Dataverse solution version.
 
 Never use apostrophes (`'`) inside manifest attribute values. Dataverse validates `display-name-key` with the `noAposStringType` type, so a single quote makes the import fail with *XSD validation failed … The Pattern constraint failed*. Patterns that need quotes in date-fns (`d 'de' MMMM 'de' yyyy`, `yyyy-MM-dd'T'HH:mm:ss`) must be written without apostrophes in the manifest; the real pattern lives in `helpers/DateFormat.ts`. Quick check:
 

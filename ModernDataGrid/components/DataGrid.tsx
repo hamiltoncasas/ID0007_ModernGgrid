@@ -794,7 +794,10 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     }
 
     evaluateConstraint(record: any, field: string, constraint: any): boolean {
-        const matchMode = constraint.matchMode || FilterMatchMode.STARTS_WITH;
+        // Se usa el mismo motor de filtros que PrimeReact. Cuando el modelo no trae
+        // matchMode se aplica el de la columna (CONTAINS en el DataTable), no otro:
+        // si no, la exportación no coincidiría con las filas que se ven en la grilla.
+        const matchMode = constraint.matchMode || FilterMatchMode.CONTAINS;
         const filterPredicate = (FilterService as any).filters?.[matchMode];
         if (typeof filterPredicate !== 'function') return true;
 
@@ -835,11 +838,21 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }));
         if (!columns.length) return;
 
+        // Se exportan las mismas filas que muestra la grilla (buscador global + filtros
+        // de columna) con las mismas columnas visibles que el usuario tiene seleccionadas.
+        const rows = this.getRecordsForExport();
+
+        console.log('[ModernDataGrid] exportando a Excel', {
+            columnas: columns.map((column) => column.field),
+            filas: rows.length,
+            filasCargadas: this.state.records.length
+        });
+
         exportRowsToExcel({
             fileName: `${this.getExportFileName()}_${this.getExportFileStamp()}`,
             sheetName: this.getStrings().exportSheetName,
             columns,
-            rows: this.getRecordsForExport()
+            rows
         }).catch((error) => console.error('Error exporting to Excel:', error));
     };
 
