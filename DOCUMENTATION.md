@@ -276,7 +276,7 @@ Con `AllowSorting = true` se puede ordenar por cada columna (ascendente/descende
 ### 7.4 Paginación y refresco
 El paginador trabaja **contra el dataset** (`loadNextPage`, `loadExactPage`, `setPageSize`), por lo que se puede recorrer todo el conjunto de datos aunque no esté cargado de golpe. El botón de **refrescar** (icono circular) vuelve a la página 1, **limpia la selección** (local y en el dataset) y **vuelve a pedir los datos a la fuente de origen** (`refresh()`), repintando la grilla cuando la fuente responde.
 
-### Escenarios del pie de páginas
+#### Escenarios del pie de páginas
 
 Desde `1.0.0.26` el pie funciona en los tres casos posibles:
 
@@ -579,6 +579,8 @@ Select-String -Path ModernDataGrid\ControlManifest.Input.xml -Pattern "=\"[^""]*
 8. `FieldConfigurations` y `DateFormat` se reflejan en los valores (moneda, decimales, Sí/No, fechas).
 9. `RowColorRules` colorea las filas (si no, revisa la consola del navegador).
 10. Al cambiar `Language` todos los textos (incluido el panel de filtro) cambian de idioma.
+11. Con `DisplayPagination = true` el pie navega entre páginas (y "anterior" siempre responde).
+12. El botón **Limpiar filtros** quita de golpe el buscador y los filtros de columna, y está deshabilitado cuando no hay ninguno.
 
 ## 10. Limitaciones conocidas
 
@@ -603,8 +605,8 @@ Los tipos `SingleLine.Phone` y `SingleLine.URL` se prefijan con `tel:` y `<a hre
 ### 10.4 Valores con separadores reservados
 En `FieldConfigurations` y `RowColorRules` los caracteres `:`, `|` y `,` son separadores, por lo que un valor que los contenga no se puede expresar literalmente.
 
-### 10.5 Filtros y orden sobre lo cargado
-Los filtros por columna y el ordenamiento actúan sobre las filas ya cargadas en la grilla; la carga de más filas la gobierna el *paging* del dataset.
+### 10.5 Filtros, orden y paginación sobre lo cargado
+Los filtros por columna y el ordenamiento actúan sobre las filas ya cargadas en la grilla; la carga de más filas la gobierna el *paging* del dataset. En el **modo cliente** del pie (cuando el dataset no puede paginar, `pageSize = 0`) la paginación también se hace sobre lo cargado: para ver más filas del origen hay que aumentar `Default Rows` en la app.
 
 ### 10.6 La barra requiere cabecera
 El buscador, el selector de columnas, el refresco y la exportación viven en la barra superior: si `DisplayHeader = false`, no se muestran.
@@ -651,6 +653,9 @@ No: filtran y ordenan sobre las filas cargadas en el control. Para más filas, a
 **¿Cómo cambio el nombre de una columna sin tocar Dataverse?**
 Con `ColumnLabels`: `nombre=Nombre completo, importe=Importe (€)`. Se aplica al encabezado, al Excel exportado, al placeholder del filtro y al selector de columnas; la etiqueta también sirve como identificador en `FieldConfigurations`, `RowColorRules` e `InitialColumns`.
 
+**¿Cómo quito todos los filtros de golpe?**
+Con el botón de **filtro tachado** de la barra (*Limpiar filtros*, §7.12): borra el buscador global y los filtros de todas las columnas y vuelve a la página 1. Está deshabilitado si la grilla no está filtrada.
+
 **¿Los colores de fila se aplican al Excel exportado?**
 No, la exportación no lleva colores.
 
@@ -676,6 +681,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 | Ver los nombres/placeholder en el combo | Quitar la regla que oculta `.p-multiselect-label` |
 | Iconos más grandes | `width/height` de `.p-button .p-button-icon svg` (hoy `1.15rem`) y `> .p-input-icon svg` (hoy `1.05rem`) |
 | Barra más alta o más baja | `height: 2.5rem` en `.p-inputtext`, `.p-multiselect` y `.p-button.p-button-icon-only` |
+| Tamaño de página cuando el dataset no pagina (modo cliente) | `getClientPageSize()` en `DataGrid.tsx` (hoy devuelve 25 si el dataset no informa `pageSize`) |
 
 ## 13. Historial de versiones
 
