@@ -25,7 +25,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - `Solution/ModernDataGrid/ModernDataGrid.cdsproj`: Dataverse solution project.
 - `Solution/ModernDataGrid/src/Other/Solution.xml`: solution and publisher metadata.
 - `Solution/ModernDataGrid/bin/Release/`: generated solution ZIPs.
-- `DOCUMENTATION.md`: maker and user documentation (properties, formats, Excel export, row coloring, troubleshooting, changelog). Update it together with the manifest whenever properties change.
+- `DOCUMENTATION.md`: maker and user documentation (properties in detail §5.1, copy-ready examples §5.2, per-data-type formats §8.x, import checklist §9.5, troubleshooting and FAQ §11, changelog §13). Update it together with the manifest whenever properties change.
 
 ## Current Identity
 
@@ -33,7 +33,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.22`
+- Solution version: `1.0.0.23`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -166,7 +166,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.21`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.23`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -179,7 +179,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.34`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.36`, is separate from the four-part Dataverse solution version.
 
 ## Git Publishing
 

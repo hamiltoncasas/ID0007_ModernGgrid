@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.22` |
+| Versión de la solución | `1.0.0.23` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.35` |
+| Versión del control (manifest) | `0.0.36` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.33`) y la versión de la solución (`1.0.0.20`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.36`) y la versión de la solución (`1.0.0.23`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 
 ## 2. Requisitos
 
@@ -67,7 +67,7 @@ Luego, en las propiedades del control:
 | `DateFormat` | Enum (36 opciones) | `default` | `default` | Formato **global** de fecha / fecha y hora / hora para las columnas de fecha (ver §5.1 y §8.3) |
 | `InitialColumns` | TextArea | vacío | todas | Columnas iniciales, separadas por comas: **nombre, alias o nombre para mostrar**. Vacío = todas |
 | `Language` | Enum (`en` \| `es`) | `en` | `en` | Idioma de todos los textos del control |
-| `RowColorRules` | TextArea | vacío | sin colores | Colorea el registro completo según el valor de una columna (ver §7.6) |
+| `RowColorRules` | TextArea | vacío | sin colores | Colorea el registro completo según el valor de una columna (ver §7.8) |
 
 > En Canvas, el valor que pongas en la app siempre manda; el *default* del manifest se usa al insertar el control y en escenarios model-driven.
 
@@ -92,7 +92,7 @@ true
 ```
 
 ### `DisplayPagination` — TwoOptions · default `false` en manifest (`true` si no se define)
-Muestra el paginador con navegación por páginas, selector de filas por página y el texto *Mostrando X a Y de Z registros*.
+Muestra el paginador con navegación por páginas, selector de filas por página y el texto *Mostrando X a Y registros · Filtrados: Z*.
 ```text
 true
 ```
@@ -157,6 +157,50 @@ Colorea el **registro completo** según el valor de una o varias columnas (detal
 ```text
 estado=Activo:#DFF6DD|Pendiente:#FFF4CE, prioridad=~alta:#FDE7E9
 ```
+
+## 5.2 Ejemplos de configuración listos para copiar
+
+### A. Grilla financiera en español con semáforo por estado
+
+| Propiedad | Valor |
+|---|---|
+| `Language` | `es` |
+| `DisplayHeader` / `DisplaySearch` / `DisplayPagination` | `true` |
+| `AllowSorting` / `AllowFiltering` | `true` |
+| `InitialColumns` | `cliente, importe, vencimiento, estado, responsable` |
+| `DateFormat` | `dd_MM_yyyy` |
+| `FieldConfigurations` | `importe=currency:EUR, estado=trueLabel:Vigente\|falseLabel:Vencido` |
+| `RowColorRules` | `estado=~vigente:#C6EFCE\|~vencido:#FDE7E9:#A80000, responsable=*:#F5F5F5` |
+
+### B. Agenda de citas con fecha y hora
+
+| Propiedad | Valor |
+|---|---|
+| `Language` | `es` |
+| `DateFormat` | `dd_MM_yyyy_HH_mm` |
+| `AllowSorting` | `true` |
+| `EmptyMessage` | `No hay citas para mostrar` |
+| `SelectionMode` | `checkbox` |
+| `RowColorRules` | `estado=~confirmada:#C6EFCE\|~cancelada:#FDE7E9` |
+
+### C. Catálogo largo con muchas columnas
+
+| Propiedad | Valor |
+|---|---|
+| `Language` | `en` |
+| `DisplaySearch` | `true` |
+| `InitialColumns` | `sku, nombre, precio, stock` |
+| `FieldConfigurations` | `precio=currency:USD, stock=decimalPlaces:0` |
+| `RowColorRules` | `stock=0:#FDE7E9\|*:#F5F5F5` |
+
+### D. Consulta de solo lectura
+
+| Propiedad | Valor |
+|---|---|
+| `IsEnabled` | `false` |
+| `DisplayPagination` / `AllowFiltering` | `true` |
+| `AllowSorting` | `true` |
+| `RowColorRules` | *(vacío)* |
 
 ## 6. Funcionalidades
 
@@ -420,6 +464,19 @@ npm run build
 - **Catálogo de fechas**: los tokens de `helpers/DateFormat.ts` y los `<value>` de `DateFormat` en el manifest deben coincidir **en contenido y orden**; hay una prueba automática que los compara y además valida que cada patrón funcione con date-fns.
 - **Normalización compartida**: `normalizeText()` en `helpers/Utils.ts` (sin mayúsculas, sin acentos, sin espacios extremos) se usa tanto para los colores de fila como para resolver la configuración por columna.
 
+### 9.5 Checklist de verificación tras importar
+
+1. Power Apps Maker muestra la versión esperada de la solución.
+2. Cierra y reabre la app de lienzo; el control responde a las propiedades configuradas.
+3. La barra muestra buscador (si `DisplaySearch = true`), selector de columnas, refrescar y exportar (si `DisplayHeader = true`).
+4. Con `AllowFiltering = true` aparecen los embudos y el panel abre con **Contenga**; al escribir filtra al momento.
+5. El pie del paginador muestra `Mostrando X a Y registros · Filtrados: Z`.
+6. El buscador global filtra sobre todas las columnas y se combina con los filtros de columna.
+7. El botón de Excel descarga un `.xlsx` que abre en Excel sin advertencias y contiene lo filtrado.
+8. `FieldConfigurations` y `DateFormat` se reflejan en los valores (moneda, decimales, Sí/No, fechas).
+9. `RowColorRules` colorea las filas (si no, revisa la consola del navegador).
+10. Al cambiar `Language` todos los textos (incluido el panel de filtro) cambian de idioma.
+
 ## 10. Limitaciones conocidas
 
 ### 10.1 `FieldConfigurations` por columna — resuelto en `1.0.0.21`
@@ -470,6 +527,35 @@ El buscador, el selector de columnas, el refresco y la exportación viven en la 
 | La moneda sale en USD aunque la configuré | Revisa el nombre de la columna en `FieldConfigurations` (nombre, alias o nombre para mostrar) y que la versión sea `1.0.0.21` o superior |
 | Los decimales no cambian de 2 posiciones | Igual que el caso anterior: `Columna=decimalPlaces:3` y versión `1.0.0.21`+ |
 
+### 11.1 Preguntas frecuentes
+
+**¿Puedo mostrar también el total de registros de la base de datos?**
+Hoy no: por petición, el pie muestra la **cantidad filtrada**. Volver a mostrar el total implicaría usar `paging.totalResultCount` en la plantilla del paginador.
+
+**¿Cómo uso dos formatos de fecha distintos en la misma grilla?**
+Con `FieldConfigurations` por columna (`Fecha=dateFormat:dd/MM/yyyy, Creado=dateFormat:yyyy-MM-dd HH:mm`), que tiene prioridad sobre `DateFormat`.
+
+**¿Puedo aplicar un patrón de fecha que no esté en el combo?**
+Sí: `dateFormat` por columna acepta **cualquier patrón de date-fns** (por ejemplo `d 'de' MMMM 'de' yyyy HH:mm`).
+
+**¿Los filtros y el buscador consultan toda la tabla de Dataverse?**
+No: filtran y ordenan sobre las filas cargadas en el control. Para más filas, amplía `Default Rows` y usa el paginador.
+
+**¿Los colores de fila se aplican al Excel exportado?**
+No, la exportación no lleva colores.
+
+**¿El control modifica datos?**
+No: es de solo lectura. Muestra, filtra, ordena, publica la selección de ids y exporta.
+
+**¿Funciona en formularios model-driven?**
+Sí, es un control de dataset; los *defaults* del manifest aplican cuando la propiedad no está configurada.
+
+**¿Hay límite de columnas?**
+Se muestran las del dataset (o las de `InitialColumns`); el usuario final puede ocultar las que no necesite con el selector.
+
+**¿Necesito la fuente PrimeIcons?**
+No. Todos los iconos del control son SVG en línea.
+
 ## 12. Ajustes rápidos de la barra
 
 Todo está en `ModernDataGrid/components/DataGrid.css`:
@@ -485,6 +571,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.23` / `0.0.36` | Actualización de **documentación**: ejemplos de configuración listos para copiar (§5.2), checklist de verificación tras importar (§9.5), preguntas frecuentes (§11.1) y corrección de versiones y referencias cruzadas. **Sin cambios funcionales** respecto a `1.0.0.22` |
 | `1.0.0.22` / `0.0.35` | El reporte del paginador muestra el rango visible y la **cantidad filtrada** en lugar del total de la base de datos (*Mostrando 51 a 54 registros · Filtrados: 54*) |
 | `1.0.0.21` / `0.0.34` | **Arreglado**: `FieldConfigurations` ahora se aplica **por columna** (moneda, decimales, etiquetas Sí/No y `dateFormat`), resolviendo la columna por nombre, alias o nombre para mostrar. Nueva propiedad **`DateFormat`** con 36 formatos de fecha, fecha y hora y hora. Documentación **propiedad a propiedad** en `DOCUMENTATION.md` |
 | `1.0.0.20` / `0.0.33` | Iconos de buscar, refrescar y exportar como **SVG en línea** (sin depender de la fuente de PrimeIcons, que en algunos entornos no carga y dejaba iconos vacíos); barra con altura uniforme de 2,5 rem; botones cuadrados alineados con el buscador; combo de columnas más grande; documentación en `DOCUMENTATION.md` |
