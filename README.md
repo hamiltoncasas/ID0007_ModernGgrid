@@ -1,5 +1,7 @@
 # Modern Data Grid
 
+> 📘 Full documentation (properties, formats, Excel export, row coloring, troubleshooting): [DOCUMENTATION.md](DOCUMENTATION.md)
+
 - **Optimized for Canvas Apps**
 - **Responsive**
 - **Works Seamlessly with Any Data Source**

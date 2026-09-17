@@ -17,10 +17,14 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - `ModernDataGrid/components/DataGrid.css`: sizing, overflow, and styles.
 - `ModernDataGrid/helpers/Utils.ts`: formatting helpers.
 - `ModernDataGrid/helpers/ExcelExport.ts`: dependency-free XLSX writer (the OPC/ZIP container is built by hand).
+- `ModernDataGrid/helpers/RowColoring.ts`: parser and compiler of the row color rules.
+- `ModernDataGrid/helpers/Localization.ts`: `en`/`es` strings and the Spanish PrimeReact locale.
+- `ModernDataGrid/components/ExcelIcon.tsx`: inline SVG icon for the Excel button.
 - `Modern-Data-Grid.pcfproj`: PCF MSBuild project.
 - `Solution/ModernDataGrid/ModernDataGrid.cdsproj`: Dataverse solution project.
 - `Solution/ModernDataGrid/src/Other/Solution.xml`: solution and publisher metadata.
 - `Solution/ModernDataGrid/bin/Release/`: generated solution ZIPs.
+- `DOCUMENTATION.md`: maker and user documentation (properties, formats, Excel export, row coloring, troubleshooting, changelog). Update it together with the manifest whenever properties change.
 
 ## Current Identity
 
@@ -28,7 +32,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.18`
+- Solution version: `1.0.0.20`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -51,7 +55,8 @@ The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `
 - Sorting stays delegated to PrimeReact through the `sortable` columns and the `AllowSorting` property.
 - `Language` property (`Enum`: `en`/`es`) translates the control texts and the PrimeReact internals (filter panel, match modes, paginator, column selector).
 - The column selector trigger shows only its icon: no chips and no label, so the toolbar never overflows.
-- The toolbar wraps (`flex-wrap`) so the search box, the refresh button and the Excel button always stay visible; the refresh and Excel icons are inline SVG, not the PrimeIcons font.
+- The toolbar wraps (`flex-wrap`) and every toolbar control is 2.5rem tall, so nothing is ever pushed out of view; all toolbar icons (search, refresh, Excel) are inline SVG and the control no longer depends on the PrimeIcons font.
+- `RowColorRules` property: colors the whole row from a column value (`columna=valor:#fondo[:texto]|valor:#fondo`, `~` for contains, `*` for any value).
 
 ## Layout Rules
 
@@ -86,6 +91,23 @@ With `filterDisplay="menu"` PrimeReact writes the typed value into `constraints[
 ```
 
 Any user-facing text added to the grid must be added to `GridStrings` (both languages) instead of being hardcoded in the component.
+
+## Row Coloring
+
+`RowColorRules` (`SingleLine.TextArea`) paints the whole `<tr>` from a column value:
+
+```text
+estado=Activo:#DFF6DD|Pendiente:#FFF4CE:#7A4F01, prioridad=~alta:#FDE7E9, ciudad=*:#F5F5F5
+```
+
+- `,` separates columns, `|` separates rules of the same column and `:` separates the value, the background color and the optional text color.
+- `~valor` means contains; `*` matches any value, so place it last inside its column to keep it as the fallback.
+- Column tokens accept name, alias or display name; comparison ignores case and accents.
+- The first matching rule in written order wins.
+- PrimeReact 10 has **no** `rowStyle` prop, so colors must be applied through `rowClassName` plus CSS.
+- `helpers/RowColoring.ts` compiles the text into one class per rule plus its stylesheet; `DataGrid.getRowClassName()` feeds `DataTable rowClassName` and the CSS is published once through a `<style data-modern-data-grid="row-colors">` element removed on unmount.
+- The generated CSS covers the normal state, the hover state (`:not(.p-highlight):hover`, background darkened 6%) and the selected state (`.p-highlight` keeps the rule color and adds an inset highlight).
+- Unknown columns or invalid colors are ignored with a `console.warn`; with the property empty the grid behaves exactly as before.
 
 ## Build Commands
 
@@ -126,7 +148,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.18`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.20`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -139,7 +161,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.31`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.33`, is separate from the four-part Dataverse solution version.
 
 ## Git Publishing
 

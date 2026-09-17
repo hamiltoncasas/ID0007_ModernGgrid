@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest>
-  <control namespace="ID0007" constructor="ModernDataGrid" version="0.0.31" display-name-key="ModernDataGrid" description-key="ModernDataGrid description" control-type="virtual">
+  <control namespace="ID0007" constructor="ModernDataGrid" version="0.0.33" display-name-key="ModernDataGrid" description-key="ModernDataGrid description" control-type="virtual">
     <!-- dataset node represents a set of entity records on CDS; allow more than one datasets -->
     <data-set name="DataSource" display-name-key="Data source">
       <!-- 'property-set' node represents a unique, configurable property that each record in the dataset must provide. -->
@@ -24,5 +24,6 @@
       <value name="en" display-name-key="English">en</value>
       <value name="es" display-name-key="Español">es</value>
     </property>
+    <property name="RowColorRules" display-name-key="Row Color Rules" description-key="Colors the whole record based on a column value. Format: column=value:background[:text]|value:background, otherColumn=... Use ~ before a value for contains and * for any value." of-type="SingleLine.TextArea" usage="bound" default-value="" />
   </control>
 </manifest>

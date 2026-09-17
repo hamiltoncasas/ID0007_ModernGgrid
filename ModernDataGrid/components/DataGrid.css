@@ -23,9 +23,49 @@
     flex-wrap: wrap;
 }
 
-.modern-data-grid-actions .modern-data-grid-column-selector {
-    flex: 0 0 auto;
-    width: auto;
+/* La barra se reparte el ancho disponible y los botones nunca quedan fuera. */
+.modern-data-grid-actions .p-icon-field.p-icon-field-left {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+
+.modern-data-grid-actions .p-icon-field.p-icon-field-left > .p-inputtext {
+    width: 100%;
+}
+
+/* Altura uniforme de toda la barra. */
+.modern-data-grid-actions .p-inputtext,
+.modern-data-grid-actions .p-multiselect {
+    height: 2.5rem;
+}
+
+/* Icono del buscador: SVG posicionado a mano para no depender de la fuente. */
+.modern-data-grid-actions .p-icon-field.p-icon-field-left > .p-input-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    margin-top: -0.5rem;
+    color: #6c757d;
+    pointer-events: none;
+}
+
+.modern-data-grid-actions .p-icon-field.p-icon-field-left > .p-input-icon svg {
+    width: 1.05rem;
+    height: 1.05rem;
+    display: block;
+}
+
+/* Botones de refrescar y exportar: cuadrados, alineados con el buscador. */
+.modern-data-grid-actions .p-button.p-button-icon-only {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+}
+
+.modern-data-grid-actions .p-button .p-button-icon svg {
+    width: 1.15rem;
+    height: 1.15rem;
+    display: block;
 }
 
 /* El disparador del selector solo muestra su icono: sin textos ni chips. */
@@ -39,14 +79,17 @@
     min-width: 0;
 }
 
-/* La barra se reparte el ancho disponible y los botones nunca quedan fuera. */
-.modern-data-grid-actions .p-icon-field.p-icon-field-left {
-    flex: 1 1 12rem;
-    min-width: 0;
+/* Tamaño del selector de columnas: mismo alto que el resto y más ancho. */
+.modern-data-grid-actions .modern-data-grid-column-selector {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 4.5rem;
 }
 
-.modern-data-grid-actions .p-icon-field.p-icon-field-left > .p-inputtext {
-    width: 100%;
+.modern-data-grid-actions .modern-data-grid-column-selector .p-multiselect-trigger svg {
+    width: 1.15rem;
+    height: 1.15rem;
+    display: block;
 }
 
 /* El panel del selector de columnas se renderiza en document.body (Portal). */

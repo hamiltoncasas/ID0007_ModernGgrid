@@ -11,8 +11,8 @@ export interface ExcelIconProps {
 export const ExcelIcon: React.FC<ExcelIconProps> = ({ className }) => (
     <svg
         className={className}
-        width="14"
-        height="14"
+        width="18"
+        height="18"
         viewBox="0 0 24 24"
         role="img"
         aria-hidden="true"

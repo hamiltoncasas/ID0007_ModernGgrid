@@ -9,10 +9,12 @@ import { InputIcon } from 'primereact/inputicon';
 import { Button } from 'primereact/button';
 import { MultiSelect } from 'primereact/multiselect';
 import { RefreshIcon } from 'primereact/icons/refresh';
+import { SearchIcon } from 'primereact/icons/search';
 import { IInputs } from "../generated/ManifestTypes";
 import { formatDate, getAvailableDatePatterns } from '../helpers/Utils';
 import { exportRowsToExcel } from '../helpers/ExcelExport';
 import { applyPrimeReactLanguage, formatTemplate, getStrings, GridStrings, Language } from '../helpers/Localization';
+import { CompiledRowColors, compileRowColors } from '../helpers/RowColoring';
 import { ExcelIcon } from './ExcelIcon';
 import 'primereact/resources/themes/saga-blue/theme.css';
 import 'primereact/resources/primereact.min.css';
@@ -45,6 +47,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     private filterMap: Map<string, any> = new Map();
     private intervalId: NodeJS.Timeout | null = null;
     private appliedLanguage: Language | null = null;
+    private rowColorsCache: { key: string; compiled: CompiledRowColors } | null = null;
+    private rowColorStyleElement: HTMLStyleElement | null = null;
     static contextType = React.createContext<ComponentFramework.Context<IInputs> | undefined>(undefined);
     declare context: React.ContextType<typeof DataGrid.contextType>;
     constructor(props: DataGridProps) {
@@ -84,12 +88,14 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }
         this.saveCurrentParametersToState();
         this.checkAndStartInterval();
+        this.syncRowColorStyles();
         this.forceRefreshDataset();
 
     }
 
     componentWillUnmount() {
         this.clearRefreshInterval();
+        this.clearRowColorStyles();
     }
 
     checkAndStartInterval() {
@@ -291,6 +297,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     }
 
     componentDidUpdate(prevProps: Readonly<DataGridProps>, prevState: Readonly<DataGridState>): void {
+        this.syncRowColorStyles();
+
         const { context } = this.props;
         const dataSet = context.parameters.DataSource as ComponentFramework.PropertyTypes.DataSet;
 
@@ -635,6 +643,57 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.appliedLanguage = language;
     }
 
+    /** Configuración de colores de fila compilada (se recompila si cambia el texto o las columnas). */
+    getRowColors(): CompiledRowColors {
+        const raw = this.props.context.parameters.RowColorRules?.raw || '';
+        const columns = (this.props.context.parameters.DataSource.columns || []).map((column) => ({
+            name: column.name,
+            alias: column.alias,
+            displayName: column.displayName
+        }));
+        const key = `${raw}|${columns.map((column) => `${column.name}:${column.displayName}`).join(',')}`;
+
+        if (!this.rowColorsCache || this.rowColorsCache.key !== key) {
+            this.rowColorsCache = { key, compiled: compileRowColors(raw, columns) };
+        }
+
+        return this.rowColorsCache.compiled;
+    }
+
+    /** Clase de color de la fila según RowColorRules (cadena vacía si no aplica). */
+    getRowClassName(record: Record<string, any>): string {
+        return this.getRowColors().classNameFor(record);
+    }
+
+    /** Publica las reglas de color en una hoja de estilos propia de este control. */
+    syncRowColorStyles(): void {
+        const css = this.getRowColors().css;
+
+        if (!css) {
+            this.clearRowColorStyles();
+
+            return;
+        }
+
+        if (!this.rowColorStyleElement || !this.rowColorStyleElement.isConnected) {
+            this.rowColorStyleElement = document.createElement('style');
+            this.rowColorStyleElement.setAttribute('data-modern-data-grid', 'row-colors');
+            document.head.appendChild(this.rowColorStyleElement);
+        }
+
+        if (this.rowColorStyleElement.textContent !== css) {
+            this.rowColorStyleElement.textContent = css;
+        }
+    }
+
+    /** Elimina la hoja de estilos de colores de fila. */
+    clearRowColorStyles(): void {
+        if (this.rowColorStyleElement) {
+            this.rowColorStyleElement.remove();
+            this.rowColorStyleElement = null;
+        }
+    }
+
     renderHeader() {
         const strings = this.getStrings();
         const displayHeader = this.props.context.parameters.DisplayHeader?.raw ?? false;
@@ -666,7 +725,9 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                     )}
                     {displaySearch && (
                         <IconField iconPosition="left">
-                            <InputIcon className="pi pi-search" />
+                            <InputIcon>
+                                <SearchIcon />
+                            </InputIcon>
                             <InputText value={this.state.globalFilterValue} onChange={this.onGlobalFilterChange} placeholder={strings.keywordSearch} />
                         </IconField>
                     )}
@@ -874,6 +935,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                     currentPageReportTemplate={formatTemplate(strings.pageReport, { total: String(paging.totalResultCount) })}
                     scrollable
                     scrollHeight="flex"
+                    rowClassName={(row: any) => this.getRowClassName(row)}
                     className="modern-data-grid-table"
                     style={{ width: '100%', minWidth: '0' }}
 
