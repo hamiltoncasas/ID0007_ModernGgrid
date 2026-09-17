@@ -42,6 +42,12 @@ interface DataGridState {
     needsRefresh: boolean;
     /** Se incrementa para reiniciar la vista del grid (paginador a la página 1). */
     gridEpoch: number;
+    /** Página visible del pie (1-based). */
+    currentPage: number;
+    /** Página que se pidió a la fuente y aún no se puede mostrar. */
+    pendingPage: number | null;
+    /** Filas por página elegidas por el usuario (null = las del dataset). */
+    pageSizeOverride: number | null;
     totalPages: number;
     /** Columnas que el usuario final decidió ver; null = todas las disponibles. */
     selectedColumns: string[] | null;
@@ -54,6 +60,9 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     private columnLabelsCache: { key: string; labels: Record<string, string> } | null = null;
     private rowColorsCache: { key: string; compiled: CompiledRowColors } | null = null;
     private autoLoadFrom = -1;
+    /** true cuando la fuente ya se consultó y no entregó más filas. */
+    private extraPageDismissed = false;
+    private pendingTimeout: NodeJS.Timeout | null = null;
     private rowColorStyleElement: HTMLStyleElement | null = null;
     /** Tope de filas que se cargan automáticamente para poder paginar y filtrar en cliente. */
     private static readonly maxAutoLoadedRows = 2000;
@@ -80,6 +89,9 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             enabled: props.context.parameters.IsEnabled?.raw ?? true,
             needsRefresh: false,
             gridEpoch: 1,
+            currentPage: 1,
+            pendingPage: null,
+            pageSizeOverride: null,
         };
 
         this.applyLanguage();
@@ -105,6 +117,15 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     componentWillUnmount() {
         this.clearRefreshInterval();
         this.clearRowColorStyles();
+        this.clearPendingTimeout();
+    }
+
+    /** Libera el temporizador de la página pendiente. */
+    clearPendingTimeout(): void {
+        if (this.pendingTimeout) {
+            clearTimeout(this.pendingTimeout);
+            this.pendingTimeout = null;
+        }
     }
 
     checkAndStartInterval() {
@@ -356,12 +377,17 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         // Trae de la fuente las páginas que falten para poder paginar/filtrar en cliente.
         this.ensureMoreRowsLoaded();
 
+        // Si había una página pendiente y ya hay filas para mostrarla, se mueve la vista.
+        this.applyPendingPage();
+
         const dataSourceChanged = prevProps.context.parameters.DataSource !== this.props.context.parameters.DataSource;
         const sortedRecordIdsChanged =
             JSON.stringify(prevProps.context.parameters.DataSource.sortedRecordIds) !== JSON.stringify(dataSet.sortedRecordIds);
 
         if (sortedRecordIdsChanged) {
             this.logPaginationInfo();
+            // Llegaron filas nuevas: se vuelve a permitir ofrecer una página extra.
+            this.extraPageDismissed = false;
         }
 
         const filtersChanged = JSON.stringify(prevState.filters) !== JSON.stringify(this.state.filters);
@@ -484,6 +510,14 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return true;
         }
 
+        if (
+            this.state.currentPage !== nextState.currentPage ||
+            this.state.pendingPage !== nextState.pendingPage ||
+            this.state.pageSizeOverride !== nextState.pageSizeOverride
+        ) {
+            return true;
+        }
+
         if (this.state.gridEpoch !== nextState.gridEpoch) {
             //console.log("Grid must be reset. Component should update.");
             return true;
@@ -515,8 +549,16 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }
         dataSet.paging.reset();
         this.autoLoadFrom = -1;
+        this.extraPageDismissed = false;
+        this.clearPendingTimeout();
         this.setState(
-            { gridEpoch: this.state.gridEpoch + 1, selectedRecordIds: [], selectedRecords: [] },
+            {
+                gridEpoch: this.state.gridEpoch + 1,
+                currentPage: 1,
+                pendingPage: null,
+                selectedRecordIds: [],
+                selectedRecords: []
+            },
             () => this.forceUpdate()
         );
 
@@ -899,41 +941,191 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }, 300);
     };
 
-    /** Filas por página del pie: el tamaño del dataset o 25 si no lo informa. */
+    /** Filas por página del pie: las elegidas por el usuario, las del dataset o 25. */
     getPageSize(): number {
+        if (this.state.pageSizeOverride && this.state.pageSizeOverride > 0) {
+            return this.state.pageSizeOverride;
+        }
+
         const pageSize = this.props.context.parameters.DataSource?.paging?.pageSize;
 
         return pageSize && pageSize > 0 ? pageSize : 25;
     }
 
+    /** true si la fuente todavía tiene filas que no están cargadas en la grilla. */
+    hasMoreRowsInSource(): boolean {
+        if (this.extraPageDismissed) {
+            return false;
+        }
+
+        const dataSet = this.props.context.parameters.DataSource;
+        const paging = dataSet?.paging;
+
+        if (!paging || typeof paging.loadNextPage !== 'function') {
+            return false;
+        }
+
+        if (paging.hasNextPage) {
+            return true;
+        }
+
+        const loadedRows = dataSet.sortedRecordIds ? dataSet.sortedRecordIds.length : 0;
+
+        // Total conocido y mayor que lo cargado -> quedan filas.
+        if (paging.totalResultCount > loadedRows) {
+            return true;
+        }
+
+        // Sin total fiable: si la última página está completa, probablemente queden filas.
+        return paging.totalResultCount <= 0 && loadedRows > 0 && loadedRows % this.getPageSize() === 0;
+    }
+
+    /** Páginas que se pueden mostrar con las filas ya cargadas. */
+    getLoadedPageCount(): number {
+        const rows = this.getPageSize();
+
+        return Math.max(1, Math.ceil(this.getFilteredRecordCount() / rows));
+    }
+
     /**
-     * Propiedades de paginación de la grilla.
+     * Propiedades de paginación del pie.
      *
-     * La grilla pagina **siempre en cliente** sobre las filas cargadas: así el pie
-     * responde en cualquier host (con o sin paginación real en el dataset, con
-     * `totalResultCount` conocido o `-1`) y nunca deja la tabla vacía. Las páginas
-     * que falten se traen de la fuente en segundo plano (`ensureMoreRowsLoaded`).
+     * Se navega entre las páginas que ya están cargadas (instantáneo) y, mientras la
+     * fuente tenga más filas, el pie muestra **una página extra** para poder pedirlas.
+     * Nunca se mueve la vista a una página sin filas: la petición queda pendiente
+     * hasta que llegan los datos (`applyPendingPage`).
      */
-    getPaginationProps(paginator: boolean): { paginator: boolean; rows: number } {
-        return { paginator, rows: this.getPageSize() };
+    getPaginationProps(paginator: boolean): any {
+        const pageSize = this.getPageSize();
+        const loadedRows = this.getFilteredRecordCount();
+        const extraPage = this.hasMoreRowsInSource() ? pageSize : 0;
+
+        return {
+            paginator,
+            rows: pageSize,
+            totalRecords: loadedRows + extraPage,
+            first: (this.state.currentPage - 1) * pageSize,
+            onPage: this.onPageChange
+        };
+    }
+
+    /** Navegación del pie: mueve la vista o pide a la fuente las filas que falten. */
+    onPageChange = (event: any) => {
+        const rows = event.rows || 0;
+        const targetPage = (event.page === undefined ? 0 : event.page) + 1;
+        const pageSize = this.getPageSize();
+
+        // Cambio de filas por página: se vuelve a la primera página.
+        if (rows > 0 && rows !== pageSize) {
+            const paging = this.props.context.parameters.DataSource?.paging;
+
+            if (paging && typeof paging.setPageSize === 'function') {
+                paging.setPageSize(rows);
+                paging.reset();
+            }
+
+            this.autoLoadFrom = -1;
+            this.extraPageDismissed = false;
+            this.setState({ pageSizeOverride: rows, currentPage: 1, pendingPage: null }, () => {
+                this.ensureMoreRowsLoaded();
+                this.forceUpdate();
+            });
+
+            return;
+        }
+
+        if (targetPage === this.state.currentPage) {
+            this.forceUpdate();
+
+            return;
+        }
+
+        // Página ya cargada: la vista se mueve al instante.
+        if (targetPage <= this.getLoadedPageCount()) {
+            this.setState({ currentPage: targetPage }, () => this.forceUpdate());
+
+            return;
+        }
+
+        // Página más allá de lo cargado: se piden más filas a la fuente.
+        this.setState({ pendingPage: targetPage }, () => this.forceUpdate());
+        this.requestMoreRows();
+    };
+
+    /** Pide a la fuente las filas que falten para la página solicitada. */
+    requestMoreRows(): void {
+        this.autoLoadFrom = -1;
+        this.ensureMoreRowsLoaded(true);
+
+        if (this.pendingTimeout) {
+            clearTimeout(this.pendingTimeout);
+        }
+
+        // Si la fuente no responde, se libera el estado pendiente para no bloquear el pie.
+        this.pendingTimeout = setTimeout(() => {
+            if (this.state.pendingPage !== null) {
+                console.log('[ModernDataGrid] la fuente no entregó más filas para la página solicitada');
+
+                this.extraPageDismissed = true;
+                this.setState({ pendingPage: null }, () => this.forceUpdate());
+            }
+        }, 6000);
+    }
+
+    /** Si había una página pendiente y ya hay filas para mostrarla, se mueve la vista. */
+    applyPendingPage(): void {
+        const pendingPage = this.state.pendingPage;
+
+        if (pendingPage === null) {
+            return;
+        }
+
+        if (pendingPage <= this.getLoadedPageCount()) {
+            if (this.pendingTimeout) {
+                clearTimeout(this.pendingTimeout);
+                this.pendingTimeout = null;
+            }
+
+            this.setState({ currentPage: pendingPage, pendingPage: null }, () => this.forceUpdate());
+
+            return;
+        }
+
+        // Todavía faltan filas: se sigue pidiendo mientras la fuente tenga más.
+        if (this.hasMoreRowsInSource()) {
+            this.ensureMoreRowsLoaded();
+        }
     }
 
     /**
      * Pide a la fuente las páginas que falten (con tope de seguridad) para que haya
      * filas que paginar, filtrar y exportar. Se detiene cuando la fuente ya no tiene
      * más páginas o cuando se alcanza el tope.
+     *
+     * `force` (petición explícita del usuario desde el pie) intenta la carga aunque el
+     * dataset diga que no hay más páginas o aunque ya se haya alcanzado el tope: si la
+     * fuente no entrega nada, el aviso se libera solo y el pie deja de ofrecerlo.
      */
-    ensureMoreRowsLoaded(): void {
+    ensureMoreRowsLoaded(force = false): void {
         const dataSet = this.props.context.parameters.DataSource;
         const paging = dataSet?.paging;
 
-        if (!paging || typeof paging.loadNextPage !== 'function' || !paging.hasNextPage) {
+        if (!paging || typeof paging.loadNextPage !== 'function') {
+            return;
+        }
+
+        if (!force && !paging.hasNextPage) {
             return;
         }
 
         const loadedRows = dataSet.sortedRecordIds ? dataSet.sortedRecordIds.length : 0;
 
-        if (loadedRows >= DataGrid.maxAutoLoadedRows || loadedRows === this.autoLoadFrom) {
+        // El tope solo frena la carga automática: si el usuario pide otra página, se intenta.
+        if (!force && loadedRows >= DataGrid.maxAutoLoadedRows) {
+            return;
+        }
+
+        if (loadedRows === this.autoLoadFrom) {
             return;
         }
 
@@ -970,7 +1162,13 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }, {});
 
         this.setState(
-            { filters: clearedFilters, globalFilterValue: '', gridEpoch: this.state.gridEpoch + 1 },
+            {
+                filters: clearedFilters,
+                globalFilterValue: '',
+                gridEpoch: this.state.gridEpoch + 1,
+                currentPage: 1,
+                pendingPage: null
+            },
             () => this.forceUpdate()
         );
     };
@@ -1060,6 +1258,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                     key={`modern-data-grid-${this.state.gridEpoch}`}
                     value={records}
                     {...this.getPaginationProps(displayPagination)}
+                    loading={this.state.pendingPage !== null}
                     header={header}
                     paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
                     rowsPerPageOptions={rowsPerPageOptions}

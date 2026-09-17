@@ -34,7 +34,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.27`
+- Solution version: `1.0.0.28`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -47,7 +47,7 @@ The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `
 - Global search across mapped record fields.
 - Column filters controlled through `filters` and `onFilter`; keep this callback when editing filters.
 - Manual refresh button that resets paging and calls `DataSource.refresh()`.
-- The pagination report shows the visible range plus the **filtered** count (`Mostrando 51 a 54 registros · Filtrados: 54`), not the database total; page navigation still uses the dataset total.
+- The pagination report shows the visible range plus the **filtered** count (`Mostrando 51 a 54 registros · Filtrados: 54`), not the database total.
 - `InitialColumns` property: comma-separated column names, aliases, or display names; empty means all columns.
 - Internal horizontal and vertical scrolling constrained to the PCF host dimensions.
 - Managed and unmanaged solution packaging.
@@ -64,7 +64,7 @@ The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `
 - `DateFormat` property: 36-option combo (date, date+time and time patterns) applied to every date column; a column `dateFormat` wins over it.
 - `ColumnLabels` property: display names for the end user (`columna=Nombre`); applied to the grid header, the Excel header, the filter placeholder and the column selector, and usable as a column identifier in the other config properties.
 - Clear filters button: resets the global search and every column filter and goes back to page 1; it is disabled while nothing is filtered.
-- Client-side pagination over the loaded rows (never depends on `totalResultCount`), plus automatic loading of the missing source pages (capped at 2000 rows).
+- Pagination over the loaded rows (never depends on `totalResultCount`) plus an extra page while the source has more rows: asking for it calls `loadNextPage()` and the view jumps when the rows arrive. Missing source pages are also loaded automatically (capped at 2000 rows).
 - Refresh button reloads from the origin: clears the selection (`clearSelectedRecordIds()`), resets paging and calls `DataSource.refresh()`, then re-maps the records.
 
 ## Layout Rules
@@ -144,11 +144,20 @@ nombre=Nombre completo, importe=Importe (€)
 
 ## Pagination
 
-The footer **always paginates client-side** over the loaded rows: `getPaginationProps()` returns only `paginator` and `rows` (the dataset page size, or 25), so PrimeReact owns `first` and `totalRecords`. Do not pass `first`/`onPage`/`totalRecords` derived from `paging.totalResultCount` again: hosts that cannot page the source report `-1`, the footer stops responding, and a controlled `first` can point past the loaded rows and leave the table empty.
+The footer works in two layers: it paginates over the loaded rows **and** it can pull the missing ones from the source.
 
-`ensureMoreRowsLoaded()` (called on mount and from `componentDidUpdate`) asks the source for the missing pages with `loadNextPage()` while `hasNextPage` is true, guarded against repeats and capped at `DataGrid.maxAutoLoadedRows` (2000 rows).
+`getPaginationProps()` returns `paginator`, `rows` (`getPageSize()`), `totalRecords`, `first` and `onPage`:
 
-The refresh button combines `paging.reset()`, `clearSelectedRecordIds()` and `refresh()`; both refresh and clear-filters bump `gridEpoch`, which is the DataTable `key`, so the footer returns to page 1. `logPaginationInfo()` prints the loaded and filtered rows, the page size, the page count, `totalResultCount` and `hasNextPage`.
+- `totalRecords = getFilteredRecordCount() + (hasMoreRowsInSource() ? pageSize : 0)`, so when the source still has rows the footer shows **one extra page** to go and get them.
+- `first = (currentPage - 1) * pageSize`, with `currentPage` in state. Never let `first` point past the loaded rows: `onPageChange` only moves `currentPage` when `targetPage <= getLoadedPageCount()`; otherwise it stores `pendingPage` and calls `requestMoreRows()` (which resets the auto-load guard and calls `loadNextPage()`).
+
+`componentDidUpdate` calls `applyPendingPage()`, which moves the view to `pendingPage` as soon as the loaded pages cover it and keeps asking while `hasMoreRowsInSource()`. A 6 s `pendingTimeout` releases the pending state (`extraPageDismissed = true`) if the source never answers, so the footer never stays blocked; any new rows set `extraPageDismissed = false` again.
+
+`hasMoreRowsInSource()` is true when `paging.hasNextPage` is true, when `totalResultCount` is greater than the loaded rows, or (heuristic for hosts that report `-1`) when the loaded row count is a whole multiple of the page size. Do not derive the footer from `paging.totalResultCount` alone: hosts that cannot page the source report `-1`, the footer stops responding, and a controlled `first` can point past the loaded rows and leave the table empty.
+
+`ensureMoreRowsLoaded(force = false)` (called on mount, from `componentDidUpdate` and from `requestMoreRows()`) asks the source for the missing pages with `loadNextPage()` while `hasNextPage` is true, guarded against repeats and capped at `DataGrid.maxAutoLoadedRows` (2000 rows). From the footer (`requestMoreRows()`) it is called with `force = true`: it tries `loadNextPage()` even when the dataset reports `hasNextPage = false` or when the cap is already reached, so the end user can always request one more page; if nothing arrives, the 6 s timeout dismisses the extra page. Changing the page size goes through `onPageChange` (`rows` differs from `getPageSize()`): it calls `setPageSize()`/`reset()` on the dataset, stores `pageSizeOverride` and returns to page 1.
+
+The refresh button combines `paging.reset()`, `clearSelectedRecordIds()` and `refresh()`; refresh and clear-filters bump `gridEpoch` (the DataTable `key`) and reset `currentPage`/`pendingPage`, so the footer returns to page 1. `logPaginationInfo()` prints the loaded and filtered rows, the page size, the page count, `totalResultCount` and `hasNextPage`.
 
 ## Build Commands
 
@@ -158,6 +167,8 @@ Run from the workspace root:
 npm install
 npm run build
 ```
+
+`pcfconfig.json` sets `"outDir": "./out/controls"` and `"buildMode": "production"`; webpack reads `buildMode` as its `mode`, so `production` minifies the bundle (~1.2 MB instead of ~3.2 MB). The MSBuild packaging step reads the same file, so keep it in `production` when you generate the solution ZIPs.
 
 Clean rebuild:
 
@@ -189,7 +200,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.27`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.28`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -202,7 +213,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.40`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.41`, is separate from the four-part Dataverse solution version.
 
 Never use apostrophes (`'`) inside manifest attribute values. Dataverse validates `display-name-key` with the `noAposStringType` type, so a single quote makes the import fail with *XSD validation failed … The Pattern constraint failed*. Patterns that need quotes in date-fns (`d 'de' MMMM 'de' yyyy`, `yyyy-MM-dd'T'HH:mm:ss`) must be written without apostrophes in the manifest; the real pattern lives in `helpers/DateFormat.ts`. Quick check:
 

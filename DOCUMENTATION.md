@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.27` |
+| Versión de la solución | `1.0.0.28` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.40` |
+| Versión del control (manifest) | `0.0.41` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.40`) y la versión de la solución (`1.0.0.27`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.41`) y la versión de la solución (`1.0.0.28`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 
 ## 2. Requisitos
 
@@ -274,12 +274,20 @@ Escribe y filtra **mientras escribes** (con un pequeño retardo), y acepta `Ente
 Con `AllowSorting = true` se puede ordenar por cada columna (ascendente/descendente) sobre las filas cargadas.
 
 ### 7.4 Paginación y refresco
-El pie de páginas pagina **siempre en cliente** sobre las filas cargadas. Así responde en cualquier host —con o sin paginación real en el dataset, con `totalResultCount` conocido o `-1`— y **nunca deja la tabla vacía**. Para que haya filas que paginar, el control **trae de la fuente las páginas que falten** en segundo plano (hasta un tope de seguridad de **2000 filas**), empezando por las que carga la app según `Default Rows`.
+El pie funciona con **dos capas**, de modo que siempre se puede llegar a los registros que existen aunque no estén cargados todavía:
 
-- **Filas por página**: el tamaño de página del dataset (`Default Rows`) o **25** si no lo informa; el usuario puede cambiarlo con el desplegable del pie.
-- Moverse entre páginas es **instantáneo** (no consulta la fuente).
+1. **Navegación inmediata sobre lo cargado**: el pie mueve la vista entre las páginas que ya están en la grilla sin consultar la fuente.
+2. **Páginas que faltan**: mientras la fuente tenga más filas (`hasNextPage`, o un total mayor que lo cargado), el pie muestra **una página extra**. Al pedirla, el control trae de la fuente las filas necesarias y, cuando llegan, salta a esa página.
+
+La vista **nunca** se mueve a una página sin filas: si avanzas y todavía no hay datos, la grilla muestra su indicador de carga y se queda donde está hasta que la fuente responde (si no responde en unos segundos, se libera el aviso y se avisa por consola). Así el pie responde en cualquier host —con o sin paginación real en el dataset, con `totalResultCount` conocido o `-1`— y **nunca deja la tabla vacía**.
+
+Además, para que haya filas que paginar, el control **trae de la fuente las páginas que falten** también en segundo plano (hasta un tope de seguridad de **2000 filas**), empezando por las que carga la app según `Default Rows`.
+
+- **Filas por página**: el tamaño de página del dataset (`Default Rows`) o **25** si no lo informa; el usuario puede cambiarlo con el desplegable del pie (la elección se respeta y vuelve a la página 1).
 - El pie es **independiente de `totalResultCount`**: si llega `-1` no pasa nada.
+- Si la fuente no informa el total y la última página está completa, se ofrece igualmente **una página extra** por si quedan registros. Al pedirla, el control consulta la fuente **aunque el dataset diga que no hay más páginas**; si no entrega nada en unos segundos, deja de ofrecerse (y lo indica en la consola).
 - El botón de **refrescar** (icono circular) vuelve a la primera página, **limpia la selección** (local y en el dataset) y **vuelve a pedir los datos a la fuente de origen** (`refresh()`), repintando la grilla cuando la fuente responde.
+- El botón **Limpiar filtros** (§7.12) también vuelve a la página 1.
 - **Diagnóstico**: en la consola del navegador aparece `[ModernDataGrid] paginación { filasCargadas, filasFiltradas, filasPorPagina, paginas, totalResultCount, hasNextPage }` cada vez que cambian las filas cargadas.
 
 El texto del paginador muestra el rango visible y la **cantidad filtrada** (registros que cumplen el buscador global y los filtros de columna):
@@ -288,7 +296,7 @@ El texto del paginador muestra el rango visible y la **cantidad filtrada** (regi
 Mostrando 51 a 54 registros · Filtrados: 54
 ```
 
-El **total de la tabla en la base de datos no se muestra**; la navegación por páginas sigue usando el total del dataset para calcular los números de página.
+El **total de la tabla en la base de datos no se muestra**.
 
 ### 7.5 Selección de registros
 `SelectionMode`: `multiple` o `checkbox`. La selección se publica en el dataset (`setSelectedRecordIds`), de modo que la app puede leerla. Con `IsEnabled = false` no se permite seleccionar.
@@ -626,7 +634,8 @@ El buscador, el selector de columnas, el refresco y la exportación viven en la 
 | La moneda sale en USD aunque la configuré | Revisa el nombre de la columna en `FieldConfigurations` (nombre, alias o nombre para mostrar) y que la versión sea `1.0.0.21` o superior |
 | Los decimales no cambian de 2 posiciones | Igual que el caso anterior: `Columna=decimalPlaces:3` y versión `1.0.0.21`+ |
 | La importación falla con `XSD validation failed … noAposStringType … The Pattern constraint failed` | Hay un **apóstrofo** (`'`) en un atributo del manifest (normalmente `display-name-key`). Corregido en `1.0.0.25`; si lo ves en otra versión, quita el `'` del atributo |
-| El pie de páginas no navega o queda vacío | Comprueba `DisplayPagination = true`. Desde `1.0.0.27` el pie pagina siempre en cliente sobre las filas cargadas (nunca queda vacío); en la consola, `[ModernDataGrid] paginación` indica cuántas filas se cargaron y si la fuente tiene más páginas |
+| El pie de páginas no navega o queda vacío | Comprueba `DisplayPagination = true`. Desde `1.0.0.28` el pie navega sobre las filas cargadas y **pide a la fuente las que falten** al avanzar más allá de lo cargado, así que nunca queda vacío. En la consola, `[ModernDataGrid] paginación` indica cuántas filas se cargaron y si la fuente tiene más páginas |
+| No puedo ir a la página 2 aunque en el origen hay más registros | El control avanza sobre las filas cargadas o sobre las que la fuente entregue con `loadNextPage()`. Mira la línea `[ModernDataGrid] paginación` de la consola: si `filasCargadas` es igual a `filasPorPagina` y `hasNextPage` es `false`, el origen no ofrece más páginas y hay que subir `Default Rows` en `Items`/`Default Rows` de la app |
 | El botón de limpiar filtros está deshabilitado | Es lo esperado: solo se activa cuando hay algún filtro o búsqueda aplicada |
 | El botón de actualizar no trae datos nuevos | Llama a `refresh()` sobre el dataset; si tu origen no lo soporta (por ejemplo una colección local), vuelve a construirla antes de refrescar |
 
@@ -675,12 +684,13 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 | Ver los nombres/placeholder en el combo | Quitar la regla que oculta `.p-multiselect-label` |
 | Iconos más grandes | `width/height` de `.p-button .p-button-icon svg` (hoy `1.15rem`) y `> .p-input-icon svg` (hoy `1.05rem`) |
 | Barra más alta o más baja | `height: 2.5rem` en `.p-inputtext`, `.p-multiselect` y `.p-button.p-button-icon-only` |
-| Tamaño de página cuando el dataset no pagina (modo cliente) | `getClientPageSize()` en `DataGrid.tsx` (hoy devuelve 25 si el dataset no informa `pageSize`) |
+| Tamaño de página del pie | `getPageSize()` en `DataGrid.tsx` (las filas que elige el usuario con el desplegable; si no, `pageSize` del dataset y, si no, 25). Para el tope de carga automática: `maxAutoLoadedRows` |
 
 ## 13. Historial de versiones
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.28` / `0.0.41` | **Paginación bidireccional**: además de navegar sobre las filas cargadas, el pie muestra **una página extra mientras la fuente tenga más registros**, la pide con `loadNextPage()` y salta a ella cuando llegan los datos (la vista nunca queda vacía; mientras carga se muestra el indicador de la grilla). Si el origen no informa el total y la última página está completa, también se ofrece esa página extra; cambiar las filas por página respeta la elección del usuario y vuelve a la página 1 |
 | `1.0.0.27` / `0.0.40` | **Paginado en cliente real**: el pie deja de depender del dataset (ya no usa `totalResultCount`, `first` ni `onPage`), por lo que navega igual con total conocido, con `-1` o sin paginación en el origen, y **nunca deja la tabla vacía**. El control además **carga automáticamente las páginas que falten** (tope de 2000 filas) y publica el estado de la paginación en la consola |
 | `1.0.0.26` / `0.0.39` | **Paginación adaptativa**: el pie navega aunque el dataset no informe el total (`-1`, típico en Canvas) o no pueda paginar (se pagina en cliente sobre lo cargado), y moverse entre páginas ya cargadas es inmediato. Nuevo botón **Limpiar filtros** y **Actualizar** mejorado: limpia la selección (local y en el dataset) y vuelve a pedir los datos a la fuente (`refresh()`) |
 | `1.0.0.25` / `0.0.38` | **Corregido**: los `display-name-key` del combo `DateFormat` ya no llevan apóstrofos (Dataverse usa el tipo `noAposStringType` y la importación fallaba con *XSD validation failed*). Los patrones con comillas (`d de MMMM de yyyy`, `yyyy-MM-ddTHH:mm:ss`) se muestran sin apóstrofos; el patrón real no cambia |
