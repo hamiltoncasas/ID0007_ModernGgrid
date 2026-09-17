@@ -63,9 +63,16 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     /** true cuando la fuente ya se consultó y no entregó más filas. */
     private extraPageDismissed = false;
     private pendingTimeout: NodeJS.Timeout | null = null;
+    private loadWatchTimeout: NodeJS.Timeout | null = null;
+    /** Firma de las filas ya procesadas: detecta páginas nuevas, recargas y fin de carga. */
+    private processedRowSignature = '';
+    /** true mientras se traen todas las filas disponibles en la fuente (al abrir y al refrescar). */
+    private deepLoad = false;
     private rowColorStyleElement: HTMLStyleElement | null = null;
-    /** Tope de filas que se cargan automáticamente para poder paginar y filtrar en cliente. */
+    /** Tope de la carga de fondo para poder paginar y filtrar en cliente. */
     private static readonly maxAutoLoadedRows = 2000;
+    /** Tope de la carga completa (al abrir el control y al pulsar Refrescar). */
+    private static readonly maxLoadedRows = 10000;
     static contextType = React.createContext<ComponentFramework.Context<IInputs> | undefined>(undefined);
     declare context: React.ContextType<typeof DataGrid.contextType>;
     constructor(props: DataGridProps) {
@@ -99,7 +106,9 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
     componentDidMount() {
         (window as any).context = this.props.context;
-        console.log(this.props.context)
+        // Al abrir el control se intenta traer todo lo que ofrezca la fuente ("Items").
+        this.deepLoad = true;
+        this.processedRowSignature = '';
 
         if (this.props.context.parameters.DataSource && !this.props.context.parameters.DataSource.loading) {
             this.mapRecordsToState();
@@ -118,6 +127,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.clearRefreshInterval();
         this.clearRowColorStyles();
         this.clearPendingTimeout();
+        this.clearLoadWatch();
     }
 
     /** Libera el temporizador de la página pendiente. */
@@ -126,6 +136,41 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             clearTimeout(this.pendingTimeout);
             this.pendingTimeout = null;
         }
+    }
+
+    /** Firma de las filas del dataset: cambia al llegar una página, al recargar y al terminar de cargar. */
+    getRowSignature(dataSet?: ComponentFramework.PropertyTypes.DataSet): string {
+        if (!dataSet) {
+            return '';
+        }
+
+        const ids = dataSet.sortedRecordIds || [];
+        const firstId = ids.length ? ids[0] : '';
+        const lastId = ids.length ? ids[ids.length - 1] : '';
+
+        return `${dataSet.loading ? 1 : 0}|${ids.length}|${firstId}|${lastId}`;
+    }
+
+    /** Libera el vigilante de carga. */
+    clearLoadWatch(): void {
+        if (this.loadWatchTimeout) {
+            clearTimeout(this.loadWatchTimeout);
+            this.loadWatchTimeout = null;
+        }
+    }
+
+    /**
+     * Revisa en breve si llegaron más filas y continúa la carga. Es la red de seguridad para
+     * cuando el host no vuelve a entrar en `componentDidUpdate` después de `loadNextPage()`.
+     */
+    scheduleLoadWatch(): void {
+        this.clearLoadWatch();
+        this.loadWatchTimeout = setTimeout(() => {
+            this.loadWatchTimeout = null;
+            this.mapRecordsToState(true);
+            this.ensureMoreRowsLoaded();
+            this.forceUpdate();
+        }, 400);
     }
 
     checkAndStartInterval() {
@@ -369,6 +414,12 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         const { context } = this.props;
         const dataSet = context.parameters.DataSource as ComponentFramework.PropertyTypes.DataSet;
 
+        // Firma de filas: se registra siempre (también al empezar a cargar), de modo que la
+        // transición "cargando -> cargado" cuente como cambio y la grilla se repinte.
+        const rowSignature = this.getRowSignature(dataSet);
+        const rowsChanged = rowSignature !== this.processedRowSignature;
+        this.processedRowSignature = rowSignature;
+
         if (!dataSet || dataSet.loading) {
             //console.log('DataSet is invalid or still loading. Skipping update.');
             return;
@@ -384,7 +435,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         const sortedRecordIdsChanged =
             JSON.stringify(prevProps.context.parameters.DataSource.sortedRecordIds) !== JSON.stringify(dataSet.sortedRecordIds);
 
-        if (sortedRecordIdsChanged) {
+        if (rowsChanged) {
             this.logPaginationInfo();
             // Llegaron filas nuevas: se vuelve a permitir ofrecer una página extra.
             this.extraPageDismissed = false;
@@ -397,10 +448,19 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         const fieldConfigurationsChanged = prevFieldConfigurations !== currentFieldConfigurations;
 
 
-        if (dataSourceChanged || sortedRecordIdsChanged || filtersChanged || fieldConfigurationsChanged) {
+        const structuralChange =
+            dataSourceChanged || sortedRecordIdsChanged || filtersChanged || fieldConfigurationsChanged;
+
+        if (structuralChange || rowsChanged) {
             console.log("Changes detected in DataSource, records, filters, or FieldConfigurations. Updating state.");
             this.mapRecordsToState();
-            this.forceRefreshDataset();
+
+            if (structuralChange) {
+                this.forceRefreshDataset();
+            } else {
+                // Página nueva o recarga de la fuente: basta con repintar lo que ya está mapeado.
+                this.forceUpdate();
+            }
             //this.setState({ previousFieldConfigurations: currentFieldConfigurations });
         }
 
@@ -464,6 +524,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         console.log("component udpated")
         console.log(this.props.context.parameters.DataSource.columns)
         console.log(this.props.context.parameters.DataSource)
+
+        // Si el dataset trae otras filas (página nueva, recarga o fin de carga) hay que repintar.
+        if (this.getRowSignature(nextProps.context.parameters.DataSource) !== this.processedRowSignature) {
+            return true;
+        }
         const parameterKeys: (keyof IInputs)[] = Object.keys(nextProps.context.parameters) as (keyof IInputs)[];
         const needsRefresh = nextState.needsRefresh;
         if (needsRefresh) {
@@ -550,7 +615,10 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         dataSet.paging.reset();
         this.autoLoadFrom = -1;
         this.extraPageDismissed = false;
+        this.deepLoad = true;
+        this.processedRowSignature = '';
         this.clearPendingTimeout();
+        this.clearLoadWatch();
         this.setState(
             {
                 gridEpoch: this.state.gridEpoch + 1,
@@ -566,6 +634,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         dataSet.refresh();
         this.props.notifyOutputChanged();
         this.forceRefreshDataset();
+        // Y traer todas las páginas que ofrezca la fuente, no solo la primera.
+        this.scheduleLoadWatch();
     };
 
     getInitialColumnNames(): string[] {
@@ -1114,14 +1184,21 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return;
         }
 
-        if (!force && !paging.hasNextPage) {
+        if (dataSet.loading) {
+            // La fuente sigue respondiendo: se reintenta cuando termine (componentDidUpdate o vigilante).
             return;
         }
 
         const loadedRows = dataSet.sortedRecordIds ? dataSet.sortedRecordIds.length : 0;
+        const limit = this.deepLoad ? DataGrid.maxLoadedRows : DataGrid.maxAutoLoadedRows;
 
         // El tope solo frena la carga automática: si el usuario pide otra página, se intenta.
-        if (!force && loadedRows >= DataGrid.maxAutoLoadedRows) {
+        if (!force && loadedRows >= limit) {
+            return;
+        }
+
+        // Sin más páginas ni indicios de más filas no se insiste (salvo petición del usuario).
+        if (!force && !paging.hasNextPage && !this.hasMoreRowsInSource()) {
             return;
         }
 
@@ -1131,6 +1208,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
         this.autoLoadFrom = loadedRows;
         paging.loadNextPage();
+        this.scheduleLoadWatch();
     }
 
     /** Deja en la consola el estado de la paginación (útil para diagnosticar). */
