@@ -34,7 +34,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.25`
+- Solution version: `1.0.0.26`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -63,6 +63,9 @@ The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `
 - `FieldConfigurations` applies **per column** (resolved by name, alias or display name); it sets currency, decimal places, Yes/No labels and `dateFormat`.
 - `DateFormat` property: 36-option combo (date, date+time and time patterns) applied to every date column; a column `dateFormat` wins over it.
 - `ColumnLabels` property: display names for the end user (`columna=Nombre`); applied to the grid header, the Excel header, the filter placeholder and the column selector, and usable as a column identifier in the other config properties.
+- Clear filters button: resets the global search and every column filter and goes back to page 1; it is disabled while nothing is filtered.
+- Adaptive pagination: dataset navigation when the dataset can page (even with `totalResultCount = -1`), client-side pagination otherwise; moving between already loaded pages never calls the source.
+- Refresh button reloads from the origin: clears the selection (`clearSelectedRecordIds()`), resets paging and calls `DataSource.refresh()`, then re-maps the records.
 
 ## Layout Rules
 
@@ -139,6 +142,17 @@ nombre=Nombre completo, importe=Importe (€)
 
 `helpers/ColumnLabels.ts` resolves every entry against the dataset columns with `normalizeText()` (name, alias or display name; case/accent insensitive) and warns on unknown columns or malformed entries. `DataGrid.getColumnHeader()` is the **single source** for the header text and feeds the grid header, the Excel header, the per-column filter placeholder and the column selector options. The label is also accepted as a column identifier by `InitialColumns`, `getColumnConfiguration()` and `compileRowColors()`.
 
+## Pagination
+
+`DataGrid.getPaginationProps()` decides between two modes:
+
+| Condition | Pagination |
+|---|---|
+| `paging.loadExactPage` exists and `paging.pageSize > 0` | **Dataset mode**: `totalRecords` is `totalResultCount` when it is known, otherwise the loaded rows plus one page while `hasNextPage` is true; `first` is `(currentPage - 1) * pageSize` and `onPageChange` drives it |
+| Otherwise | **Client mode**: only `paginator` and `rows` are passed, so PrimeReact paginates the already loaded (and filtered) rows |
+
+`onPageChange` calls `paging.loadNextPage()` **only** when the requested page is beyond the loaded pages; every other movement is local, so "previous" and in-window jumps always work. `paging.loadExactPage()` is 1-based and matches `currentPage`. `totalResultCount === -1` means the host cannot page the source: never pass it as `totalRecords`.
+
 ## Build Commands
 
 Run from the workspace root:
@@ -178,7 +192,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.25`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.26`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -191,7 +205,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.38`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.39`, is separate from the four-part Dataverse solution version.
 
 Never use apostrophes (`'`) inside manifest attribute values. Dataverse validates `display-name-key` with the `noAposStringType` type, so a single quote makes the import fail with *XSD validation failed … The Pattern constraint failed*. Patterns that need quotes in date-fns (`d 'de' MMMM 'de' yyyy`, `yyyy-MM-dd'T'HH:mm:ss`) must be written without apostrophes in the manifest; the real pattern lives in `helpers/DateFormat.ts`. Quick check:
 

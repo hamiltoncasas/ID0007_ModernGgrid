@@ -114,6 +114,17 @@
     overflow: auto;
 }
 
+/* El pie de paginación nunca se recorta: el contenedor de la tabla se contrae. */
+.modern-data-grid-table .p-datatable-flex-scrollable > .p-datatable-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+}
+
+.modern-data-grid-table .p-datatable-flex-scrollable > .p-paginator-bottom {
+    flex: 0 0 auto;
+}
+
 .p-icon-field.p-icon-field-left {
     margin-right: 0;
     max-width: 100%;

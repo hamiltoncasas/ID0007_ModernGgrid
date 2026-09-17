@@ -10,6 +10,7 @@ import { Button } from 'primereact/button';
 import { MultiSelect } from 'primereact/multiselect';
 import { RefreshIcon } from 'primereact/icons/refresh';
 import { SearchIcon } from 'primereact/icons/search';
+import { FilterSlashIcon } from 'primereact/icons/filterslash';
 import { IInputs } from "../generated/ManifestTypes";
 import { formatDate, getAvailableDatePatterns, normalizeText } from '../helpers/Utils';
 import { exportRowsToExcel } from '../helpers/ExcelExport';
@@ -490,10 +491,18 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
     refreshData = () => {
         const dataSet = this.props.context.parameters.DataSource;
+
+        // Volver a la primera página y limpiar la selección (local y en el dataset).
+        if (typeof dataSet.clearSelectedRecordIds === 'function') {
+            dataSet.clearSelectedRecordIds();
+        }
         dataSet.paging.reset();
-        dataSet.refresh();
         this.setState({ currentPage: 1, selectedRecordIds: [], selectedRecords: [] });
+
+        // Pedir de nuevo los datos a la fuente de origen y repintar cuando responda.
+        dataSet.refresh();
         this.props.notifyOutputChanged();
+        this.forceRefreshDataset();
     };
 
     getInitialColumnNames(): string[] {
@@ -804,6 +813,16 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                     )}
                     <Button
                         type="button"
+                        icon={<FilterSlashIcon />}
+                        text
+                        rounded
+                        disabled={!this.hasActiveFilters()}
+                        aria-label={strings.clearFilters}
+                        tooltip={strings.clearFilters}
+                        onClick={this.clearFilters}
+                    />
+                    <Button
+                        type="button"
                         icon={<RefreshIcon />}
                         text
                         rounded
@@ -859,10 +878,139 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }, 300);
     };
 
+    /** true si el dataset puede paginar (tiene API de paging y tamaño de página). */
+    isDataSetPagingAvailable(): boolean {
+        const paging = this.props.context.parameters.DataSource?.paging;
+
+        return !!paging && typeof paging.loadExactPage === 'function' && paging.pageSize > 0;
+    }
+
+    /** Tamaño de página usado cuando la grilla pagina en cliente. */
+    getClientPageSize(): number {
+        const pageSize = this.props.context.parameters.DataSource?.paging?.pageSize;
+
+        return pageSize && pageSize > 0 ? pageSize : 25;
+    }
+
+    /** Páginas que se pueden mostrar con las filas ya cargadas. */
+    getLoadedPageCount(): number {
+        const rows = this.getClientPageSize();
+
+        return Math.max(1, Math.ceil(this.getFilteredRecordCount() / rows));
+    }
+
+    /**
+     * Propiedades de paginación de la grilla.
+     *
+     * - Si el dataset puede paginar se navega contra él, pero **solo** cuando hace
+     *   falta traer filas nuevas (página siguiente fuera de lo cargado); moverse
+     *   entre páginas ya cargadas es inmediato y no depende del dataset.
+     * - Si el dataset no puede paginar (por ejemplo `pageSize` = 0) se pagina en
+     *   cliente sobre las filas cargadas, de modo que el pie siempre responde.
+     */
+    getPaginationProps(paginator: boolean): any {
+        if (!this.isDataSetPagingAvailable()) {
+            return {
+                paginator,
+                rows: this.getClientPageSize()
+            };
+        }
+
+        const paging = this.props.context.parameters.DataSource.paging;
+        const totalKnown = paging.totalResultCount > 0;
+
+        return {
+            paginator,
+            rows: paging.pageSize,
+            // Total conocido -> el del dataset. Desconocido (-1) -> lo cargado y, si la
+            // fuente indica que hay más, una página extra para poder pedirla.
+            totalRecords: totalKnown
+                ? paging.totalResultCount
+                : this.getFilteredRecordCount() + (paging.hasNextPage ? paging.pageSize : 0),
+            first: (this.state.currentPage - 1) * paging.pageSize,
+            onPage: this.onPageChange
+        };
+    }
+
+    /** Navegación del pie: mueve la vista y pide más datos solo cuando hacen falta. */
+    onPageChange = (event: any) => {
+        const { page, rows } = event;
+        const paging = this.props.context.parameters.DataSource?.paging;
+
+        if (!paging || rows <= 0) {
+            return;
+        }
+
+        const targetPage = page + 1;
+
+        // Cambio de filas por página: se vuelve a la primera página.
+        if (rows !== paging.pageSize) {
+            paging.setPageSize(rows);
+            paging.reset();
+            this.setState({ currentPage: 1 }, () => this.forceRefreshDataset());
+
+            return;
+        }
+
+        if (targetPage === this.state.currentPage) {
+            this.forceUpdate();
+
+            return;
+        }
+
+        // Si la página pedida está más allá de lo cargado, se piden más filas a la
+        // fuente; si ya está cargada, no se toca el dataset (así "anterior" y los
+        // saltos dentro de lo cargado funcionan siempre).
+        if (targetPage > this.getLoadedPageCount()) {
+            paging.loadNextPage();
+        }
+
+        this.setState({ currentPage: targetPage }, () => this.forceRefreshDataset());
+        this.forceUpdate();
+    };
+
+    /** Limpia el buscador global y todos los filtros de columna. */
+    clearFilters = () => {
+        const columns = this.props.context.parameters.DataSource.columns || [];
+        const clearedFilters = columns.reduce((acc: any, column) => {
+            acc[column.name] = {
+                operator: FilterOperator.AND,
+                constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }]
+            };
+
+            return acc;
+        }, {});
+
+        this.setState({ filters: clearedFilters, globalFilterValue: '', currentPage: 1 }, () => this.forceUpdate());
+    };
+
+    /** true si hay algún filtro activo (de columna o búsqueda global). */
+    hasActiveFilters(): boolean {
+        if (this.state.globalFilterValue) {
+            return true;
+        }
+
+        const filters = this.state.filters || {};
+
+        return Object.keys(filters).some((field) => {
+            const filterModel = filters[field];
+
+            if (!filterModel) {
+                return false;
+            }
+
+            const constraints = filterModel.constraints ? filterModel.constraints : [filterModel];
+
+            return constraints.some(
+                (constraint: any) =>
+                    constraint && constraint.value !== null && constraint.value !== undefined && constraint.value !== ''
+            );
+        });
+    }
+
     render() {
         const { context } = this.props;
         const strings = this.getStrings();
-        const paging = context.parameters.DataSource.paging;
         const { selectedRecordIds } = this.state;
         const filters = this.getFiltersForTable();
         const records = this.getFilteredRecords(this.state.records);
@@ -919,13 +1067,10 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             <div className="modern-data-grid card">
                 <DataTable
                     value={records}
-                    paginator={displayPagination}
+                    {...this.getPaginationProps(displayPagination)}
                     header={header}
-                    rows={paging.pageSize}
                     paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
                     rowsPerPageOptions={rowsPerPageOptions}
-                    first={(this.state.currentPage - 1) * paging.pageSize}
-                    totalRecords={paging.totalResultCount}
                     /*
                 totalResultCount: number;
                 firstPageNumber: number;
@@ -942,58 +1087,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                     
                     */
 
-                    onPage={(e: any) => {
-                        //console.log('onPage event triggered');
-                        const { page, rows } = e;
-
-                        if (paging) {
-                            const totalPages = Math.ceil(paging.totalResultCount / rows);
-                            //console.log('Paging Object:', paging);
-                            const targetPage = page + 1;
-                            //console.log('Current Target Page:', targetPage);
-                            //console.log('Rows Per Page:', rows);
-
-                            // Handle change in rows per page
-                            if (rows !== paging.pageSize) {
-                                //console.log('Changing rows per page to:', rows);
-                                paging.setPageSize(rows);
-                                paging.reset();
-                                this.setState({ currentPage: 1 }, () => {
-                                    this.forceRefreshDataset();
-                                });
-                            }
-                            // Navigate to next page
-                            else if (targetPage > this.state.currentPage && targetPage <= totalPages) {
-                                //console.log('Navigating to next page');
-                                paging.loadNextPage();
-                                this.setState({ currentPage: targetPage });
-                                this.forceRefreshDataset();
-                            }
-                            // Navigate to previous page
-                            else if (targetPage < this.state.currentPage && targetPage >= 0) {
-                                //console.log('Navigating to previous page');
-                                paging.loadPreviousPage();
-                                this.setState({ currentPage: targetPage }, () => {
-                                    this.forceRefreshDataset();
-                                });
-                            }
-                            // Navigate to an exact page
-                            else if (targetPage !== this.state.currentPage) {
-                                //console.log('Loading exact page:', targetPage);
-                                paging.loadExactPage(targetPage + 1);
-                                this.setState({ currentPage: targetPage }, () => {
-                                    this.forceRefreshDataset();
-                                });
-                            } else {
-                                //console.log('No action taken for paging');
-                            }
-
-                            // Ensure UI reflects changes
-                            this.forceUpdate();
-                        } else {
-                            //console.log('Paging is undefined');
-                        }
-                    }}
                     dataKey="id"
                     selectionMode={selectionMode}
                     selection={records.filter(record => selectedRecordIds.includes(record.id))}

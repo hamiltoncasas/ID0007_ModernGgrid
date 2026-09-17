@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.25` |
+| Versión de la solución | `1.0.0.26` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.38` |
+| Versión del control (manifest) | `0.0.39` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.38`) y la versión de la solución (`1.0.0.25`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.39`) y la versión de la solución (`1.0.0.26`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 
 ## 2. Requisitos
 
@@ -249,6 +249,7 @@ estado=Activo:#DFF6DD|Pendiente:#FFF4CE, prioridad=~alta:#FDE7E9
 - Paginación contra el *paging* del dataset + selector de filas por página y botón de refresco.
 - Selección de registros (múltiple o con checkbox) sincronizada con el dataset.
 - **Selector de columnas para el usuario final** (mostrar/ocultar columnas en tiempo de ejecución).
+- **Botón para limpiar todos los filtros** (buscador global + filtros de columna) de un clic.
 - **Exportación a Excel (.xlsx real)** de lo que está filtrado.
 - **Coloreado del registro completo** según el valor de una columna.
 - Idiomas **español / inglés** para todos los textos (incluidos los internos de la grilla).
@@ -267,13 +268,25 @@ Con `AllowFiltering = true` cada columna muestra el **icono de embudo**; al puls
 - el campo de búsqueda,
 - y los botones **Limpiar** / **Aplicar**.
 
-Escribe y filtra **mientras escribes** (con un pequeño retardo), y acepta `Enter`. El embudo se resalta cuando la columna tiene un filtro activo. Los textos del panel salen del idioma activo (*Contenga*, *Aplicar*, *Limpiar*…).
+Escribe y filtra **mientras escribes** (con un pequeño retardo), y acepta `Enter`. El embudo se resalta cuando la columna tiene un filtro activo. Los textos del panel salen del idioma activo (*Contenga*, *Aplicar*, *Limpiar*…). Para quitarlos **todos** de golpe está el botón *Limpiar filtros* de la barra (§7.12).
 
 ### 7.3 Ordenamiento
 Con `AllowSorting = true` se puede ordenar por cada columna (ascendente/descendente) sobre las filas cargadas.
 
 ### 7.4 Paginación y refresco
-El paginador trabaja **contra el dataset** (`loadNextPage`, `loadPreviousPage`, `loadExactPage`, `setPageSize`), por lo que se puede recorrer todo el conjunto de datos aunque no esté cargado de golpe. El botón de **refrescar** (icono circular) vuelve a la página 1 y llama a `DataSource.refresh()`, limpiando además la selección.
+El paginador trabaja **contra el dataset** (`loadNextPage`, `loadExactPage`, `setPageSize`), por lo que se puede recorrer todo el conjunto de datos aunque no esté cargado de golpe. El botón de **refrescar** (icono circular) vuelve a la página 1, **limpia la selección** (local y en el dataset) y **vuelve a pedir los datos a la fuente de origen** (`refresh()`), repintando la grilla cuando la fuente responde.
+
+### Escenarios del pie de páginas
+
+Desde `1.0.0.26` el pie funciona en los tres casos posibles:
+
+| Escenario | Comportamiento |
+|---|---|
+| El dataset informa el total (`totalResultCount > 0`) | El paginador muestra todas las páginas y navega contra el dataset |
+| El dataset **no** informa el total (`-1`, habitual en Canvas cuando la fuente no se puede paginar en origen) | Se muestra lo cargado más una página extra mientras la fuente indique que hay más (`hasNextPage`); al pedirla se traen filas nuevas |
+| El dataset **no** puede paginar (`pageSize = 0`) | La grilla pagina en cliente sobre las filas cargadas, así el pie siempre responde |
+
+Moverse entre páginas **ya cargadas** es inmediato (no consulta la fuente); solo se piden datos nuevos al pasar a una página que todavía no está cargada. Así "anterior" y los saltos dentro de lo cargado funcionan siempre.
 
 El texto del paginador muestra el rango visible y la **cantidad filtrada** (registros que cumplen el buscador global y los filtros de columna):
 
@@ -341,6 +354,9 @@ nombre=Nombre completo, importe=Importe (€), cuentas_pk=Cuenta
 ```
 
 El nombre se aplica al **encabezado** de la grilla, al **encabezado del Excel**, al **placeholder del filtro** de esa columna (*Buscar en …*) y a las **opciones del selector de columnas**. Además sirve como identificador en `InitialColumns`, `FieldConfigurations` y `RowColorRules`. Detalle en §8.5.
+
+### 7.12 Limpiar todos los filtros
+El botón con el icono de **filtro tachado** limpia de un clic el buscador global y los filtros de todas las columnas, y devuelve la grilla a la página 1. Está **deshabilitado** cuando no hay ningún filtro activo, de modo que se ve de un vistazo si la grilla está filtrada.
 
 ## 8. Referencia de formatos
 
@@ -614,6 +630,9 @@ El buscador, el selector de columnas, el refresco y la exportación viven en la 
 | La moneda sale en USD aunque la configuré | Revisa el nombre de la columna en `FieldConfigurations` (nombre, alias o nombre para mostrar) y que la versión sea `1.0.0.21` o superior |
 | Los decimales no cambian de 2 posiciones | Igual que el caso anterior: `Columna=decimalPlaces:3` y versión `1.0.0.21`+ |
 | La importación falla con `XSD validation failed … noAposStringType … The Pattern constraint failed` | Hay un **apóstrofo** (`'`) en un atributo del manifest (normalmente `display-name-key`). Corregido en `1.0.0.25`; si lo ves en otra versión, quita el `'` del atributo |
+| El pie de páginas no navega o queda vacío | Comprueba que `DisplayPagination = true`. Desde `1.0.0.26` el pie funciona aunque el dataset no informe el total (`-1`) o no sepa paginar (en ese caso pagina en cliente sobre lo cargado) |
+| El botón de limpiar filtros está deshabilitado | Es lo esperado: solo se activa cuando hay algún filtro o búsqueda aplicada |
+| El botón de actualizar no trae datos nuevos | Llama a `refresh()` sobre el dataset; si tu origen no lo soporta (por ejemplo una colección local), vuelve a construirla antes de refrescar |
 
 ### 11.1 Preguntas frecuentes
 
@@ -662,6 +681,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.26` / `0.0.39` | **Paginación adaptativa**: el pie navega aunque el dataset no informe el total (`-1`, típico en Canvas) o no pueda paginar (se pagina en cliente sobre lo cargado), y moverse entre páginas ya cargadas es inmediato. Nuevo botón **Limpiar filtros** y **Actualizar** mejorado: limpia la selección (local y en el dataset) y vuelve a pedir los datos a la fuente (`refresh()`) |
 | `1.0.0.25` / `0.0.38` | **Corregido**: los `display-name-key` del combo `DateFormat` ya no llevan apóstrofos (Dataverse usa el tipo `noAposStringType` y la importación fallaba con *XSD validation failed*). Los patrones con comillas (`d de MMMM de yyyy`, `yyyy-MM-ddTHH:mm:ss`) se muestran sin apóstrofos; el patrón real no cambia |
 | `1.0.0.24` / `0.0.37` | Nueva propiedad **`ColumnLabels`**: el programador define el nombre que verá el usuario para cada columna (`nombre=Nombre completo, importe=Importe (€)`). Se aplica al encabezado, al Excel exportado, al placeholder del filtro y al selector de columnas, y la etiqueta sirve como identificador en `InitialColumns`, `FieldConfigurations` y `RowColorRules` |
 | `1.0.0.23` / `0.0.36` | Actualización de **documentación**: ejemplos de configuración listos para copiar (§5.2), checklist de verificación tras importar (§9.5), preguntas frecuentes (§11.1) y corrección de versiones y referencias cruzadas. **Sin cambios funcionales** respecto a `1.0.0.22` |

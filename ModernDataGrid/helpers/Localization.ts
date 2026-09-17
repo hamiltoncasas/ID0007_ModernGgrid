@@ -10,6 +10,8 @@ export interface GridStrings {
     keywordSearch: string;
     /** Etiqueta del botón de refrescar (aria-label y tooltip). */
     refresh: string;
+    /** Etiqueta del botón de limpiar filtros. */
+    clearFilters: string;
     /** Etiqueta del botón de exportar a Excel. */
     exportToExcel: string;
     /** Etiqueta del selector de columnas. */
@@ -31,6 +33,7 @@ export interface GridStrings {
 const ENGLISH_STRINGS: GridStrings = {
     keywordSearch: 'Keyword search',
     refresh: 'Refresh',
+    clearFilters: 'Clear filters',
     exportToExcel: 'Export to Excel (filtered data)',
     columnsSelector: 'Show or hide columns',
     columnsPlaceholder: 'Columns',
@@ -44,6 +47,7 @@ const ENGLISH_STRINGS: GridStrings = {
 const SPANISH_STRINGS: GridStrings = {
     keywordSearch: 'Buscar palabra clave',
     refresh: 'Actualizar',
+    clearFilters: 'Limpiar filtros',
     exportToExcel: 'Exportar a Excel (datos filtrados)',
     columnsSelector: 'Mostrar u ocultar columnas',
     columnsPlaceholder: 'Columnas',
