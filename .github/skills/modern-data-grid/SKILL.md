@@ -34,7 +34,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.29`
+- Solution version: `1.0.0.30`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -65,7 +65,7 @@ The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `
 - `ColumnLabels` property: display names for the end user (`columna=Nombre`); applied to the grid header, the Excel header, the filter placeholder and the column selector, and usable as a column identifier in the other config properties.
 - Clear filters button: resets the global search and every column filter and goes back to page 1; it is disabled while nothing is filtered.
 - Pagination over the loaded rows (never depends on `totalResultCount`) plus an extra page while the source has more rows: asking for it calls `loadNextPage()` and the view jumps when the rows arrive. Missing source pages are also loaded automatically (capped at 2000 rows).
-- Refresh button reloads from the origin: clears the selection (`clearSelectedRecordIds()`), resets paging, calls `DataSource.refresh()` and reloads **every page the source offers** (up to 10000 rows), so the footer, the search, the filters and the Excel export work on all the records of `Items` again.
+- Refresh button reloads from the origin: clears the selection (`clearSelectedRecordIds()`), resets paging, calls `DataSource.refresh()` and asks for the whole source in one big page (plus the page-by-page fallback with retries), so the footer, the search, the filters and the Excel export work again on **all** the records of `Items`, trailing partial page included.
 
 ## Layout Rules
 
@@ -167,11 +167,13 @@ The footer works in two layers: it paginates over the loaded rows **and** it can
 
 `hasMoreRowsInSource()` is true when `paging.hasNextPage` is true, when `totalResultCount` is greater than the loaded rows, or (heuristic for hosts that report `-1`) when the loaded row count is a whole multiple of the page size. Do not derive the footer from `paging.totalResultCount` alone: hosts that cannot page the source report `-1`, the footer stops responding, and a controlled `first` can point past the loaded rows and leave the table empty.
 
-`ensureMoreRowsLoaded(force = false)` is called on mount, from `componentDidUpdate`, from the load watch and from `requestMoreRows()`. It skips while `dataSet.loading`, respects `maxAutoLoadedRows` (2000) for the background load and `maxLoadedRows` (10000) while `this.deepLoad` is true (`componentDidMount` and `refreshData()`), and attempts `loadNextPage()` when `hasNextPage` is true or when `hasMoreRowsInSource()` sees evidence of more rows. From the footer (`requestMoreRows()`) it runs with `force = true`: it tries `loadNextPage()` even when the dataset reports `hasNextPage = false` or when a cap is already reached, so the end user can always request one more page; if nothing arrives, the 6 s timeout dismisses the extra page. `autoLoadFrom` stores the row count of the last attempt, so every count is tried once and the chain always terminates. Changing the page size goes through `onPageChange` (`rows` differs from `getPageSize()`): it calls `setPageSize()`/`reset()` on the dataset, stores `pageSizeOverride` and returns to page 1.
+`requestWholeSource()` asks the host for one page as big as the cap (`paging.setPageSize(maxLoadedRows = 10000)` + `paging.reset()`), so the whole source — **including the trailing partial page** (113 records with `Default Rows = 25` → 113 loaded, 5 footer pages) — arrives in one shot. It stores the app page size in `this.displayPageSize` and pins it in `pageSizeOverride`, so the footer keeps paging on screen with the app size while the dataset page is huge. It is called on mount, on refresh and on clear filters, and it logs `[ModernDataGrid] pidiendo toda la fuente`. It does nothing when `paging.pageSize` is already at the cap, so hosts that ignore `setPageSize` simply fall back to the page-by-page chain.
+
+`ensureMoreRowsLoaded(force = false)` is called on mount, from `componentDidUpdate`, from the load watch and from `requestMoreRows()`. It skips while `dataSet.loading`, respects `maxAutoLoadedRows` (2000) for the background load and `maxLoadedRows` (10000) while `this.deepLoad` is true (`componentDidMount` and `refreshData()`), and attempts `loadNextPage()` when `hasNextPage` is true or when `hasMoreRowsInSource()` sees evidence of more rows. `autoLoadFrom` stores the row count of the last attempt: when the count did not grow the attempt is retried up to `maxLoadRetries` (3) times and then the source is logged as exhausted (`[ModernDataGrid] la fuente no entregó más filas`) and `extraPageDismissed` is set, so the chain always terminates. From the footer (`requestMoreRows()`) it runs with `force = true`: it tries `loadNextPage()` even when the dataset reports `hasNextPage = false` or when a cap is already reached, so the end user can always request one more page; if nothing arrives, the 6 s timeout dismisses the extra page. Changing the rows per page goes through `onPageChange` (`rows` differs from `getPageSize()`): it only changes `pageSizeOverride` and returns to page 1 — **it never calls `setPageSize()`/`reset()` on the dataset**, because that would throw away the rows already loaded. `rowsPerPageOptions` always includes the current page size.
 
 `scheduleLoadWatch()` re-checks 400 ms after every `loadNextPage()` (`mapRecordsToState(true)` + `ensureMoreRowsLoaded()` + `forceUpdate()`), so the load completes even when the host does not call `updateView` afterwards. `clearLoadWatch()` runs on unmount and on refresh.
 
-The refresh button combines `paging.reset()`, `clearSelectedRecordIds()` and `refresh()`; refresh and clear-filters bump `gridEpoch` (the DataTable `key`) and reset `currentPage`/`pendingPage`, so the footer returns to page 1. `logPaginationInfo()` prints the loaded and filtered rows, the page size, the page count, `totalResultCount` and `hasNextPage`.
+The refresh button combines `paging.reset()`, `clearSelectedRecordIds()`, `refresh()` and `requestWholeSource()`; refresh and clear-filters bump `gridEpoch` (the DataTable `key`), reset `currentPage`/`pendingPage` and reset `autoLoadFrom`, `extraPageDismissed` and `emptyLoadAttempts` so the control goes back to its freshly loaded state. `logPaginationInfo()` prints the loaded and filtered rows, the page size, the page count, `totalResultCount`, `hasNextPage` and `pageSize` of the source.
 
 ## Build Commands
 
@@ -214,7 +216,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.29`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.30`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -227,7 +229,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.42`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.43`, is separate from the four-part Dataverse solution version.
 
 Never use apostrophes (`'`) inside manifest attribute values. Dataverse validates `display-name-key` with the `noAposStringType` type, so a single quote makes the import fail with *XSD validation failed … The Pattern constraint failed*. Patterns that need quotes in date-fns (`d 'de' MMMM 'de' yyyy`, `yyyy-MM-dd'T'HH:mm:ss`) must be written without apostrophes in the manifest; the real pattern lives in `helpers/DateFormat.ts`. Quick check:
 

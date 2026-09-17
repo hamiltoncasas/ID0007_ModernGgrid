@@ -62,6 +62,10 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     private autoLoadFrom = -1;
     /** true cuando la fuente ya se consultó y no entregó más filas. */
     private extraPageDismissed = false;
+    /** Tamaño de página que definió la app (Default Rows) para el paginado en pantalla. */
+    private displayPageSize = 0;
+    /** Intentos seguidos en los que la fuente no entregó filas nuevas. */
+    private emptyLoadAttempts = 0;
     private pendingTimeout: NodeJS.Timeout | null = null;
     private loadWatchTimeout: NodeJS.Timeout | null = null;
     /** Firma de las filas ya procesadas: detecta páginas nuevas, recargas y fin de carga. */
@@ -73,6 +77,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     private static readonly maxAutoLoadedRows = 2000;
     /** Tope de la carga completa (al abrir el control y al pulsar Refrescar). */
     private static readonly maxLoadedRows = 10000;
+    /** Reintentos seguidos de carga antes de dar la fuente por agotada. */
+    private static readonly maxLoadRetries = 3;
     static contextType = React.createContext<ComponentFramework.Context<IInputs> | undefined>(undefined);
     declare context: React.ContextType<typeof DataGrid.contextType>;
     constructor(props: DataGridProps) {
@@ -118,6 +124,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.saveCurrentParametersToState();
         this.checkAndStartInterval();
         this.syncRowColorStyles();
+        // Primero se pide a la fuente una página lo bastante grande para traer todo de una vez.
+        this.requestWholeSource();
         this.ensureMoreRowsLoaded();
         this.forceRefreshDataset();
 
@@ -634,8 +642,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         dataSet.refresh();
         this.props.notifyOutputChanged();
         this.forceRefreshDataset();
-        // Y traer todas las páginas que ofrezca la fuente, no solo la primera.
-        this.scheduleLoadWatch();
+        // Y traer toda la fuente (todas las páginas, incluida la última incompleta).
+        this.requestWholeSource();
     };
 
     getInitialColumnNames(): string[] {
@@ -1085,19 +1093,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         const targetPage = (event.page === undefined ? 0 : event.page) + 1;
         const pageSize = this.getPageSize();
 
-        // Cambio de filas por página: se vuelve a la primera página.
+        // Cambio de filas por página: solo cambia el paginado en pantalla (la fuente queda igual).
         if (rows > 0 && rows !== pageSize) {
-            const paging = this.props.context.parameters.DataSource?.paging;
-
-            if (paging && typeof paging.setPageSize === 'function') {
-                paging.setPageSize(rows);
-                paging.reset();
-            }
-
             this.autoLoadFrom = -1;
             this.extraPageDismissed = false;
             this.setState({ pageSizeOverride: rows, currentPage: 1, pendingPage: null }, () => {
-                this.ensureMoreRowsLoaded();
                 this.forceUpdate();
             });
 
@@ -1168,6 +1168,52 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     }
 
     /**
+     * Pide a la fuente una página tan grande como el tope para traer **todos** los registros
+     * de una sola vez (incluida la última página incompleta). El pie sigue paginando en
+     * pantalla con el tamaño que definió la app (`Default Rows`).
+     */
+    requestWholeSource(): void {
+        const dataSet = this.props.context.parameters.DataSource;
+        const paging = dataSet?.paging;
+
+        if (!paging || typeof paging.setPageSize !== 'function') {
+            return;
+        }
+
+        const currentPageSize = paging.pageSize && paging.pageSize > 0 ? paging.pageSize : 0;
+
+        // Se recuerda el tamaño de página de la app: es el que usa el pie en pantalla.
+        if (!this.displayPageSize || this.displayPageSize <= 0) {
+            this.displayPageSize = currentPageSize > 0 ? currentPageSize : 25;
+        }
+
+        if (this.state.pageSizeOverride !== this.displayPageSize) {
+            this.setState({ pageSizeOverride: this.displayPageSize }, () => this.forceUpdate());
+        }
+
+        if (currentPageSize >= DataGrid.maxLoadedRows) {
+            // El host ya entrega la fuente completa en una página: no hay nada que pedir.
+            return;
+        }
+
+        console.log('[ModernDataGrid] pidiendo toda la fuente', {
+            paginaDeLaApp: this.displayPageSize,
+            paginaActual: currentPageSize,
+            objetivo: DataGrid.maxLoadedRows
+        });
+
+        this.autoLoadFrom = -1;
+        this.emptyLoadAttempts = 0;
+        paging.setPageSize(DataGrid.maxLoadedRows);
+
+        if (typeof paging.reset === 'function') {
+            paging.reset();
+        }
+
+        this.scheduleLoadWatch();
+    }
+
+    /**
      * Pide a la fuente las páginas que falten (con tope de seguridad) para que haya
      * filas que paginar, filtrar y exportar. Se detiene cuando la fuente ya no tiene
      * más páginas o cuando se alcanza el tope.
@@ -1203,7 +1249,26 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }
 
         if (loadedRows === this.autoLoadFrom) {
-            return;
+            // La fuente no entregó filas nuevas en el último intento: se reintenta unas veces más.
+            if (this.emptyLoadAttempts >= DataGrid.maxLoadRetries) {
+                if (!this.extraPageDismissed) {
+                    console.log('[ModernDataGrid] la fuente no entregó más filas', {
+                        filasCargadas: loadedRows,
+                        filasFiltradas: this.getFilteredRecordCount(),
+                        totalResultCount: paging.totalResultCount,
+                        hasNextPage: paging.hasNextPage,
+                        paginaFuente: paging.pageSize
+                    });
+
+                    this.extraPageDismissed = true;
+                }
+
+                return;
+            }
+
+            this.emptyLoadAttempts++;
+        } else {
+            this.emptyLoadAttempts = 0;
         }
 
         this.autoLoadFrom = loadedRows;
@@ -1223,11 +1288,12 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             filasPorPagina: pageSize,
             paginas: Math.max(1, Math.ceil(this.getFilteredRecordCount() / pageSize)),
             totalResultCount: paging?.totalResultCount,
-            hasNextPage: paging?.hasNextPage
+            hasNextPage: paging?.hasNextPage,
+            paginaFuente: paging?.pageSize
         });
     }
 
-    /** Limpia el buscador global y todos los filtros de columna. */
+    /** Limpia el buscador global y todos los filtros de columna (deja el control como al cargar). */
     clearFilters = () => {
         const columns = this.props.context.parameters.DataSource.columns || [];
         const clearedFilters = columns.reduce((acc: any, column) => {
@@ -1239,6 +1305,12 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return acc;
         }, {});
 
+        // Se vuelve al estado inicial de la carga: sin pendientes, sin descartes y con la fuente completa.
+        this.autoLoadFrom = -1;
+        this.extraPageDismissed = false;
+        this.emptyLoadAttempts = 0;
+        this.clearPendingTimeout();
+
         this.setState(
             {
                 filters: clearedFilters,
@@ -1247,7 +1319,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                 currentPage: 1,
                 pendingPage: null
             },
-            () => this.forceUpdate()
+            () => {
+                this.requestWholeSource();
+                this.ensureMoreRowsLoaded();
+                this.forceUpdate();
+            }
         );
     };
 
@@ -1292,7 +1368,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             : "multiple";
         const allowSorting = context.parameters.AllowSorting?.raw ?? false;
         const allowFiltering = context.parameters.AllowFiltering?.raw ?? false;
-        const rowsPerPageOptions = [5, 15, 25];
+        const rowsPerPageOptions = Array.from(new Set([5, 15, 25, this.getPageSize()])).sort((a, b) => a - b);
         const visibleColumns = this.getVisibleColumns();
 
         const onRenderItemColumn = (
