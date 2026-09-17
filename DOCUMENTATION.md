@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.23` |
+| Versión de la solución | `1.0.0.24` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.36` |
+| Versión del control (manifest) | `0.0.37` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.36`) y la versión de la solución (`1.0.0.23`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.37`) y la versión de la solución (`1.0.0.24`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 
 ## 2. Requisitos
 
@@ -66,6 +66,7 @@ Luego, en las propiedades del control:
 | `FieldConfigurations` | TextArea | ejemplo de moneda/fecha/decimal/booleano | — | Formato de valores **por columna** (ver §5.1 y §8.2) |
 | `DateFormat` | Enum (36 opciones) | `default` | `default` | Formato **global** de fecha / fecha y hora / hora para las columnas de fecha (ver §5.1 y §8.3) |
 | `InitialColumns` | TextArea | vacío | todas | Columnas iniciales, separadas por comas: **nombre, alias o nombre para mostrar**. Vacío = todas |
+| `ColumnLabels` | TextArea | vacío | nombres del dataset | Nombres que verá el usuario final para cada columna: `columna=Nombre visible` (ver §5.1 y §8.5) |
 | `Language` | Enum (`en` \| `es`) | `en` | `en` | Idioma de todos los textos del control |
 | `RowColorRules` | TextArea | vacío | sin colores | Colorea el registro completo según el valor de una columna (ver §7.8) |
 
@@ -146,6 +147,13 @@ Columnas que se muestran al cargar, separadas por comas (nombre, alias o nombre 
 nombre, Importe, Fecha
 ```
 
+### `ColumnLabels` — TextArea · default vacío
+Nombres que verá el **usuario final** para cada columna. La columna se identifica por nombre lógico, alias o nombre para mostrar.
+```text
+nombre=Nombre completo, importe=Importe (€), cuentas_pk=Cuenta
+```
+Vacío = se usan los nombres del dataset. Detalle completo en §8.5.
+
 ### `Language` — Enum (`en`/`es`) · default `en`
 Idioma de **todos** los textos del control, incluidos los internos de la grilla (panel de filtro, paginador, selector de columnas) y el nombre de la hoja del Excel.
 ```text
@@ -171,6 +179,7 @@ estado=Activo:#DFF6DD|Pendiente:#FFF4CE, prioridad=~alta:#FDE7E9
 | `DateFormat` | `dd_MM_yyyy` |
 | `FieldConfigurations` | `importe=currency:EUR, estado=trueLabel:Vigente\|falseLabel:Vencido` |
 | `RowColorRules` | `estado=~vigente:#C6EFCE\|~vencido:#FDE7E9:#A80000, responsable=*:#F5F5F5` |
+| `ColumnLabels` | `cliente=Cliente, importe=Importe (€), vencimiento=Vence el, estado=Situación` |
 
 ### B. Agenda de citas con fecha y hora
 
@@ -213,6 +222,7 @@ estado=Activo:#DFF6DD|Pendiente:#FFF4CE, prioridad=~alta:#FDE7E9
 - **Exportación a Excel (.xlsx real)** de lo que está filtrado.
 - **Coloreado del registro completo** según el valor de una columna.
 - Idiomas **español / inglés** para todos los textos (incluidos los internos de la grilla).
+- **Nombres de columna personalizados**: el programador define con `ColumnLabels` cómo se llama cada columna para el usuario final (encabezado, Excel, filtro y selector).
 - Formato de valores por tipo de dato (moneda, fecha, decimal, sí/no, teléfono, URL), configurable **por columna** y con un **combo global de 36 formatos de fecha** (fecha, fecha y hora y hora).
 - Scroll horizontal y vertical contenido en el tamaño del control (sin desbordar la página).
 
@@ -292,6 +302,15 @@ Los valores se transforman antes de pintarse, filtrarse y exportarse:
 | `SingleLine.URL` | se prefija con `<a href=…>` | — |
 
 Como los filtros por columna, el buscador global, los colores de fila y la exportación trabajan sobre el **valor ya formateado**, cualquier cambio de formato afecta también a esas funciones.
+
+### 7.11 Nombres de columna para el usuario final
+El programador puede **renombrar** las columnas con `ColumnLabels` sin tocar Dataverse:
+
+```text
+nombre=Nombre completo, importe=Importe (€), cuentas_pk=Cuenta
+```
+
+El nombre se aplica al **encabezado** de la grilla, al **encabezado del Excel**, al **placeholder del filtro** de esa columna (*Buscar en …*) y a las **opciones del selector de columnas**. Además sirve como identificador en `InitialColumns`, `FieldConfigurations` y `RowColorRules`. Detalle en §8.5.
 
 ## 8. Referencia de formatos
 
@@ -398,6 +417,26 @@ columna = regla [ "|" regla ]* [ "," columna = regla [ "|" regla ]* ]
 regla   = ( valor | "~" valor | "*" ) ":" colorFondo [ ":" colorTexto ]
 ```
 
+### 8.5 `ColumnLabels`
+Nombres que verá el usuario final para cada columna:
+
+```text
+nombre=Nombre completo, importe=Importe (€), cuentas_pk=Cuenta, ciudad=
+```
+
+- La coma separa columnas y el **primer** `=` separa el identificador de la etiqueta; la etiqueta puede incluir `:`, `|`, `(`, `€`, espacios…
+- La columna se identifica por nombre lógico, alias o nombre para mostrar (sin distinguir mayúsculas ni acentos).
+- Una etiqueta vacía (`ciudad=`) deja el nombre que trae el dataset.
+- Columnas inexistentes o entradas mal formadas se ignoran con un aviso en la consola del navegador.
+- El nombre personalizado se aplica en: **encabezado de la grilla**, **encabezado del Excel exportado**, **placeholder del filtro de esa columna** (*Buscar en …*) y **opciones del selector de columnas**.
+- Además, la etiqueta funciona como **identificador** en `InitialColumns`, `FieldConfigurations` y `RowColorRules`, así que puedes configurar por el nombre que ve el usuario:
+
+```text
+ColumnLabels        → importe=Importe (€)
+FieldConfigurations → Importe (€)=currency:EUR
+RowColorRules       → Importe (€)=~1.000:#FFF4CE
+```
+
 ## 9. Detalles técnicos
 
 ### 9.1 Estructura del proyecto
@@ -411,6 +450,7 @@ regla   = ( valor | "~" valor | "*" ) ":" colorFondo [ ":" colorTexto ]
 | `ModernDataGrid/components/ExcelIcon.tsx` | Icono SVG de Excel |
 | `ModernDataGrid/helpers/Utils.ts` | Formateo de fechas y normalización de texto |
 | `ModernDataGrid/helpers/DateFormat.ts` | Catálogo de formatos de la propiedad `DateFormat` |
+| `ModernDataGrid/helpers/ColumnLabels.ts` | Etiquetas personalizadas de encabezados (`ColumnLabels`) |
 | `ModernDataGrid/helpers/ExcelExport.ts` | Generador `.xlsx` (contenedor OPC/ZIP sin dependencias) |
 | `ModernDataGrid/helpers/RowColoring.ts` | Compilador de reglas de color de fila |
 | `ModernDataGrid/helpers/Localization.ts` | Textos es/en y locale español de PrimeReact |
@@ -541,6 +581,9 @@ Sí: `dateFormat` por columna acepta **cualquier patrón de date-fns** (por ejem
 **¿Los filtros y el buscador consultan toda la tabla de Dataverse?**
 No: filtran y ordenan sobre las filas cargadas en el control. Para más filas, amplía `Default Rows` y usa el paginador.
 
+**¿Cómo cambio el nombre de una columna sin tocar Dataverse?**
+Con `ColumnLabels`: `nombre=Nombre completo, importe=Importe (€)`. Se aplica al encabezado, al Excel exportado, al placeholder del filtro y al selector de columnas; la etiqueta también sirve como identificador en `FieldConfigurations`, `RowColorRules` e `InitialColumns`.
+
 **¿Los colores de fila se aplican al Excel exportado?**
 No, la exportación no lleva colores.
 
@@ -571,6 +614,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.24` / `0.0.37` | Nueva propiedad **`ColumnLabels`**: el programador define el nombre que verá el usuario para cada columna (`nombre=Nombre completo, importe=Importe (€)`). Se aplica al encabezado, al Excel exportado, al placeholder del filtro y al selector de columnas, y la etiqueta sirve como identificador en `InitialColumns`, `FieldConfigurations` y `RowColorRules` |
 | `1.0.0.23` / `0.0.36` | Actualización de **documentación**: ejemplos de configuración listos para copiar (§5.2), checklist de verificación tras importar (§9.5), preguntas frecuentes (§11.1) y corrección de versiones y referencias cruzadas. **Sin cambios funcionales** respecto a `1.0.0.22` |
 | `1.0.0.22` / `0.0.35` | El reporte del paginador muestra el rango visible y la **cantidad filtrada** en lugar del total de la base de datos (*Mostrando 51 a 54 registros · Filtrados: 54*) |
 | `1.0.0.21` / `0.0.34` | **Arreglado**: `FieldConfigurations` ahora se aplica **por columna** (moneda, decimales, etiquetas Sí/No y `dateFormat`), resolviendo la columna por nombre, alias o nombre para mostrar. Nueva propiedad **`DateFormat`** con 36 formatos de fecha, fecha y hora y hora. Documentación **propiedad a propiedad** en `DOCUMENTATION.md` |

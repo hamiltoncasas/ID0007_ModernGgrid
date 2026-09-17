@@ -17,6 +17,8 @@ export interface RowColorColumn {
     name: string;
     alias?: string;
     displayName: string;
+    /** Etiqueta personalizada de la propiedad `ColumnLabels`, si existe. */
+    label?: string;
 }
 
 export type RowColorMatchMode = 'equals' | 'contains' | 'any';
@@ -99,7 +101,7 @@ function shadeColor(color: string, ratio: number): string {
 function findColumnName(token: string, columns: RowColorColumn[]): string | null {
     const wanted = normalize(token);
     const column = columns.find((candidate) =>
-        [candidate.name, candidate.alias, candidate.displayName]
+        [candidate.name, candidate.alias, candidate.displayName, candidate.label]
             .filter(Boolean)
             .some((identifier) => normalize(identifier as string) === wanted)
     );

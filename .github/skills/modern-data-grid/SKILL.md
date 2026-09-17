@@ -20,6 +20,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - `ModernDataGrid/helpers/RowColoring.ts`: parser and compiler of the row color rules.
 - `ModernDataGrid/helpers/Localization.ts`: `en`/`es` strings and the Spanish PrimeReact locale.
 - `ModernDataGrid/helpers/DateFormat.ts`: catalog of the `DateFormat` property (token -> date-fns pattern). Keep it in sync with the manifest enum.
+- `ModernDataGrid/helpers/ColumnLabels.ts`: display-name overrides for column headers (`ColumnLabels`).
 - `ModernDataGrid/components/ExcelIcon.tsx`: inline SVG icon for the Excel button.
 - `Modern-Data-Grid.pcfproj`: PCF MSBuild project.
 - `Solution/ModernDataGrid/ModernDataGrid.cdsproj`: Dataverse solution project.
@@ -33,7 +34,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.23`
+- Solution version: `1.0.0.24`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -61,6 +62,7 @@ The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `
 - `RowColorRules` property: colors the whole row from a column value (`columna=valor:#fondo[:texto]|valor:#fondo`, `~` for contains, `*` for any value).
 - `FieldConfigurations` applies **per column** (resolved by name, alias or display name); it sets currency, decimal places, Yes/No labels and `dateFormat`.
 - `DateFormat` property: 36-option combo (date, date+time and time patterns) applied to every date column; a column `dateFormat` wins over it.
+- `ColumnLabels` property: display names for the end user (`columna=Nombre`); applied to the grid header, the Excel header, the filter placeholder and the column selector, and usable as a column identifier in the other config properties.
 
 ## Layout Rules
 
@@ -127,6 +129,16 @@ Order of precedence for dates: column `dateFormat` -> `DateFormat` -> built-in d
 
 The manifest enum and `DATE_FORMAT_OPTIONS` must stay identical (same tokens, same order); the automated check compares both lists and validates every pattern against date-fns. Values are formatted **before** filtering, row coloring and export, so a format change also changes what those features see.
 
+## Column Labels
+
+`ColumnLabels` (SingleLine.TextArea) sets the display name of each column for the end user:
+
+```text
+nombre=Nombre completo, importe=Importe (€)
+```
+
+`helpers/ColumnLabels.ts` resolves every entry against the dataset columns with `normalizeText()` (name, alias or display name; case/accent insensitive) and warns on unknown columns or malformed entries. `DataGrid.getColumnHeader()` is the **single source** for the header text and feeds the grid header, the Excel header, the per-column filter placeholder and the column selector options. The label is also accepted as a column identifier by `InitialColumns`, `getColumnConfiguration()` and `compileRowColors()`.
+
 ## Build Commands
 
 Run from the workspace root:
@@ -166,7 +178,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.23`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.24`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -179,7 +191,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.36`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.37`, is separate from the four-part Dataverse solution version.
 
 ## Git Publishing
 

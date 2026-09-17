@@ -14,6 +14,7 @@ import { IInputs } from "../generated/ManifestTypes";
 import { formatDate, getAvailableDatePatterns, normalizeText } from '../helpers/Utils';
 import { exportRowsToExcel } from '../helpers/ExcelExport';
 import { resolveDateFormat } from '../helpers/DateFormat';
+import { resolveColumnLabels } from '../helpers/ColumnLabels';
 import { applyPrimeReactLanguage, formatTemplate, getStrings, GridStrings, Language } from '../helpers/Localization';
 import { CompiledRowColors, compileRowColors } from '../helpers/RowColoring';
 import { ExcelIcon } from './ExcelIcon';
@@ -48,6 +49,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     private filterMap: Map<string, any> = new Map();
     private intervalId: NodeJS.Timeout | null = null;
     private appliedLanguage: Language | null = null;
+    private columnLabelsCache: { key: string; labels: Record<string, string> } | null = null;
     private rowColorsCache: { key: string; compiled: CompiledRowColors } | null = null;
     private rowColorStyleElement: HTMLStyleElement | null = null;
     static contextType = React.createContext<ComponentFramework.Context<IInputs> | undefined>(undefined);
@@ -192,7 +194,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return undefined;
         }
 
-        const identifiers = [column.name, column.alias, column.displayName]
+        const labels = this.getColumnLabels();
+        const identifiers = [column.name, column.alias, column.displayName, labels[column.name]]
             .filter(Boolean)
             .map((identifier) => normalizeText(String(identifier)));
         const key = keys.find((candidate) => identifiers.indexOf(normalizeText(candidate)) !== -1);
@@ -496,8 +499,30 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     getInitialColumnNames(): string[] {
         return (this.props.context.parameters.InitialColumns?.raw || '')
             .split(',')
-            .map((column) => column.trim().toLowerCase())
+            .map((column) => normalizeText(column))
             .filter(Boolean);
+    }
+
+    /** Etiquetas personalizadas de columnas (propiedad ColumnLabels), resueltas por columna. */
+    getColumnLabels(): Record<string, string> {
+        const raw = this.props.context.parameters.ColumnLabels?.raw || '';
+        const columns = (this.props.context.parameters.DataSource.columns || []).map((column) => ({
+            name: column.name,
+            alias: column.alias,
+            displayName: column.displayName
+        }));
+        const key = `${raw}|${columns.map((column) => column.name).join(',')}`;
+
+        if (!this.columnLabelsCache || this.columnLabelsCache.key !== key) {
+            this.columnLabelsCache = { key, labels: resolveColumnLabels(raw, columns) };
+        }
+
+        return this.columnLabelsCache.labels;
+    }
+
+    /** Nombre que se muestra para una columna: etiqueta personalizada o nombre del dataset. */
+    getColumnHeader(column: { name: string; displayName?: string }): string {
+        return this.getColumnLabels()[column.name] || column.displayName || column.name;
     }
 
     /** Columnas disponibles para el control (respeta InitialColumns cuando está definido). */
@@ -506,17 +531,19 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         const requestedColumns = this.getInitialColumnNames();
         if (!requestedColumns.length) return columns;
 
+        const labels = this.getColumnLabels();
+
         return columns.filter((column) =>
-            [column.name, column.alias, column.displayName]
+            [column.name, column.alias, column.displayName, labels[column.name]]
                 .filter(Boolean)
-                .some((name) => requestedColumns.includes(name!.toLowerCase()))
+                .some((name) => requestedColumns.includes(normalizeText(String(name))))
         );
     }
 
     /** Opciones que el usuario final puede marcar o desmarcar en el selector. */
     getColumnOptions(): Array<{ label: string; value: string }> {
         return this.getBaseColumns().map((column) => ({
-            label: column.displayName || column.name,
+            label: this.getColumnHeader(column),
             value: column.name
         }));
     }
@@ -653,7 +680,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
     exportToExcel = () => {
         const columns = this.getVisibleColumns().map((column) => ({
-            header: column.displayName || column.name,
+            header: this.getColumnHeader(column),
             field: column.name
         }));
         if (!columns.length) return;
@@ -688,12 +715,14 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     /** Configuración de colores de fila compilada (se recompila si cambia el texto o las columnas). */
     getRowColors(): CompiledRowColors {
         const raw = this.props.context.parameters.RowColorRules?.raw || '';
+        const labels = this.getColumnLabels();
         const columns = (this.props.context.parameters.DataSource.columns || []).map((column) => ({
             name: column.name,
             alias: column.alias,
-            displayName: column.displayName
+            displayName: column.displayName,
+            label: labels[column.name]
         }));
-        const key = `${raw}|${columns.map((column) => `${column.name}:${column.displayName}`).join(',')}`;
+        const key = `${raw}|${columns.map((column) => `${column.name}:${column.displayName}:${column.label || ''}`).join(',')}`;
 
         if (!this.rowColorsCache || this.rowColorsCache.key !== key) {
             this.rowColorsCache = { key, compiled: compileRowColors(raw, columns) };
@@ -987,11 +1016,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                         <Column
                             key={index}
                             field={col.name}
-                            header={col.displayName}
+                            header={this.getColumnHeader(col)}
                             sortable={allowSorting}
                             filter={allowFiltering}
                             filterMatchMode={FilterMatchMode.CONTAINS}
-                            filterPlaceholder={formatTemplate(strings.searchByColumn, { column: col.displayName })}
+                            filterPlaceholder={formatTemplate(strings.searchByColumn, { column: this.getColumnHeader(col) })}
                             showFilterMatchModes
                             showApplyButton={false}
                             style={{ minWidth: '12rem' }}

@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest>
-  <control namespace="ID0007" constructor="ModernDataGrid" version="0.0.36" display-name-key="ModernDataGrid" description-key="ModernDataGrid description" control-type="virtual">
+  <control namespace="ID0007" constructor="ModernDataGrid" version="0.0.37" display-name-key="ModernDataGrid" description-key="ModernDataGrid description" control-type="virtual">
     <!-- dataset node represents a set of entity records on CDS; allow more than one datasets -->
     <data-set name="DataSource" display-name-key="Data source">
       <!-- 'property-set' node represents a unique, configurable property that each record in the dataset must provide. -->
@@ -58,6 +58,7 @@
       <value name="HH_mm_ss_SSS" display-name-key="HH:mm:ss.SSS  ·  18:30:45.123">HH_mm_ss_SSS</value>
     </property>
     <property name="InitialColumns" display-name-key="Initial Columns" description-key="Comma-separated column names or aliases to display when the app loads. Leave empty to display all columns." of-type="SingleLine.TextArea" usage="bound" default-value="" />
+    <property name="ColumnLabels" display-name-key="Column Labels" description-key="Nombres que verá el usuario para cada columna. Formato: columna=Nombre visible, otraColumna=Otro nombre. La columna se identifica por nombre lógico, alias o nombre para mostrar." of-type="SingleLine.TextArea" usage="bound" default-value="" />
     <property name="Language" display-name-key="Language" description-key="Language used by the grid texts (search, buttons, filters and Excel export)" of-type="Enum" usage="bound" default-value="en">
       <value name="en" display-name-key="English">en</value>
       <value name="es" display-name-key="Español">es</value>
