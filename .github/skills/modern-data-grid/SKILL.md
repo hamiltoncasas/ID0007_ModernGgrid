@@ -19,6 +19,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - `ModernDataGrid/helpers/ExcelExport.ts`: dependency-free XLSX writer (the OPC/ZIP container is built by hand).
 - `ModernDataGrid/helpers/RowColoring.ts`: parser and compiler of the row color rules.
 - `ModernDataGrid/helpers/Localization.ts`: `en`/`es` strings and the Spanish PrimeReact locale.
+- `ModernDataGrid/helpers/DateFormat.ts`: catalog of the `DateFormat` property (token -> date-fns pattern). Keep it in sync with the manifest enum.
 - `ModernDataGrid/components/ExcelIcon.tsx`: inline SVG icon for the Excel button.
 - `Modern-Data-Grid.pcfproj`: PCF MSBuild project.
 - `Solution/ModernDataGrid/ModernDataGrid.cdsproj`: Dataverse solution project.
@@ -32,7 +33,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.20`
+- Solution version: `1.0.0.21`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -57,6 +58,8 @@ The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `
 - The column selector trigger shows only its icon: no chips and no label, so the toolbar never overflows.
 - The toolbar wraps (`flex-wrap`) and every toolbar control is 2.5rem tall, so nothing is ever pushed out of view; all toolbar icons (search, refresh, Excel) are inline SVG and the control no longer depends on the PrimeIcons font.
 - `RowColorRules` property: colors the whole row from a column value (`columna=valor:#fondo[:texto]|valor:#fondo`, `~` for contains, `*` for any value).
+- `FieldConfigurations` applies **per column** (resolved by name, alias or display name); it sets currency, decimal places, Yes/No labels and `dateFormat`.
+- `DateFormat` property: 36-option combo (date, date+time and time patterns) applied to every date column; a column `dateFormat` wins over it.
 
 ## Layout Rules
 
@@ -109,6 +112,20 @@ estado=Activo:#DFF6DD|Pendiente:#FFF4CE:#7A4F01, prioridad=~alta:#FDE7E9, ciudad
 - The generated CSS covers the normal state, the hover state (`:not(.p-highlight):hover`, background darkened 6%) and the selected state (`.p-highlight` keeps the rule color and adds an inset highlight).
 - Unknown columns or invalid colors are ignored with a `console.warn`; with the property empty the grid behaves exactly as before.
 
+## Value Formatting
+
+`FieldConfigurations` is resolved **per column** by `getColumnConfiguration()`: the column is matched by name, alias or display name with `normalizeText()` (case, accents and outer spaces ignored) and the matched block is what the type handler receives. Without a block the handler falls back to its defaults (`USD`, 2 decimals, `Yes`/`No`, `yyyy-MM-dd` / `yyyy-MM-dd HH:mm:ss`).
+
+The `DateFormat` property is the global fallback for date columns and comes from `helpers/DateFormat.ts`:
+
+```ts
+resolveDateFormat(context.parameters.DateFormat?.raw) // token -> date-fns pattern, undefined for "default"
+```
+
+Order of precedence for dates: column `dateFormat` -> `DateFormat` -> built-in default.
+
+The manifest enum and `DATE_FORMAT_OPTIONS` must stay identical (same tokens, same order); the automated check compares both lists and validates every pattern against date-fns. Values are formatted **before** filtering, row coloring and export, so a format change also changes what those features see.
+
 ## Build Commands
 
 Run from the workspace root:
@@ -148,7 +165,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.20`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.21`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -161,7 +178,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.33`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.34`, is separate from the four-part Dataverse solution version.
 
 ## Git Publishing
 

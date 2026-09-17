@@ -11,8 +11,9 @@ import { MultiSelect } from 'primereact/multiselect';
 import { RefreshIcon } from 'primereact/icons/refresh';
 import { SearchIcon } from 'primereact/icons/search';
 import { IInputs } from "../generated/ManifestTypes";
-import { formatDate, getAvailableDatePatterns } from '../helpers/Utils';
+import { formatDate, getAvailableDatePatterns, normalizeText } from '../helpers/Utils';
 import { exportRowsToExcel } from '../helpers/ExcelExport';
+import { resolveDateFormat } from '../helpers/DateFormat';
 import { applyPrimeReactLanguage, formatTemplate, getStrings, GridStrings, Language } from '../helpers/Localization';
 import { CompiledRowColors, compileRowColors } from '../helpers/RowColoring';
 import { ExcelIcon } from './ExcelIcon';
@@ -178,6 +179,32 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
      
 
 
+    /**
+     * Bloque de configuración que corresponde a una columna, buscándola por
+     * nombre, alias o nombre para mostrar (sin distinguir mayúsculas ni acentos).
+     */
+    getColumnConfiguration(
+        configurations: Record<string, any>,
+        column: ComponentFramework.PropertyHelper.DataSetApi.Column
+    ): any {
+        const keys = Object.keys(configurations || {});
+        if (!keys.length) {
+            return undefined;
+        }
+
+        const identifiers = [column.name, column.alias, column.displayName]
+            .filter(Boolean)
+            .map((identifier) => normalizeText(String(identifier)));
+        const key = keys.find((candidate) => identifiers.indexOf(normalizeText(candidate)) !== -1);
+
+        return key ? configurations[key] : undefined;
+    }
+
+    /** Patrón de fecha global de la propiedad DateFormat (undefined = predeterminado por tipo). */
+    getGlobalDateFormat(): string | undefined {
+        return resolveDateFormat(this.props.context.parameters.DateFormat?.raw);
+    }
+
       mapRecordsToState(force = false) {
         const { context } = this.props;
         const dataSet = context.parameters.DataSource as ComponentFramework.PropertyTypes.DataSet;
@@ -194,9 +221,17 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         const typeHandlers: Record<string, (value: any, config: any, context: ComponentFramework.Context<IInputs>) => any> = {
             "Currency": (value, config) => this.formatCurrency(value, config?.currency || "USD"),
             "DateAndTime.DateAndTime": (value, config, context) =>
-              formatDate(new Date(value), config?.dateFormat || "yyyy-MM-dd HH:mm:ss", context),
+              formatDate(
+                new Date(value),
+                config?.dateFormat || this.getGlobalDateFormat() || "yyyy-MM-dd HH:mm:ss",
+                context
+              ),
             "DateAndTime.DateOnly": (value, config, context) =>
-              formatDate(new Date(value), config?.dateFormat || "yyyy-MM-dd", context),
+              formatDate(
+                new Date(value),
+                config?.dateFormat || this.getGlobalDateFormat() || "yyyy-MM-dd",
+                context
+              ),
             "Decimal": (value, config) => this.formatDecimal(value, parseInt(config?.decimalPlaces) || 2),
             "TwoOptions": (value, config) => (value ? config?.trueLabel || "Yes" : config?.falseLabel || "No"),
             "SingleLine.Email": (value) => `mailto:${value}`,
@@ -245,11 +280,13 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                 ...dataSet.columns.reduce((rec: Record<string, any>, col) => {
                     const value = record.getValue(col.alias);
                     const colType = col.dataType;
+                    // Configuración propia de esta columna (por nombre, alias o nombre para mostrar).
+                    const columnConfig = this.getColumnConfiguration(fieldConfig, col);
                     //Decimal SingleLine.Text
                     try {
                         // Use the typeHandlers map to process the column type
                         rec[col.name] = typeHandlers[colType]
-                          ? typeHandlers[colType](value, fieldConfig, context)
+                          ? typeHandlers[colType](value, columnConfig, context)
                           : value; // Default case for unsupported data types
                           console.log("Type handler",typeHandlers[colType])
                       } catch (error) {

@@ -43,4 +43,13 @@ export function getAvailableDatePatterns(context: ComponentFramework.Context<IIn
       userSettings.yearMonthPattern,
     ];
   }
+
+/** Normaliza texto para comparar sin distinguir mayúsculas, acentos ni espacios extremos. */
+export function normalizeText(value: string): string {
+    return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase();
+}
   

@@ -11,6 +11,8 @@
  * - La columna se puede indicar por nombre, alias o nombre para mostrar.
  */
 
+import { normalizeText } from './Utils';
+
 export interface RowColorColumn {
     name: string;
     alias?: string;
@@ -63,13 +65,9 @@ function isColor(value: string): boolean {
     return HEX_COLOR.test(value) || FUNCTION_COLOR.test(value) || CSS_COLOR_NAMES.has(value.toLowerCase());
 }
 
-/** Normaliza para comparar sin distinguir mayúsculas ni acentos. */
+/** Normaliza para comparar sin distinguir mayúsculas ni acentos (implementación compartida). */
 function normalize(value: string): string {
-    return value
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim()
-        .toLowerCase();
+    return normalizeText(value);
 }
 
 /** Aclara (ratio > 0) u oscurece (ratio < 0) un color hexadecimal. */
