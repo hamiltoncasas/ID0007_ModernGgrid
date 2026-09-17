@@ -20,7 +20,7 @@ export interface GridStrings {
     selectAllColumns: string;
     /** Mensaje sin registros (solo si EmptyMessage no está configurado). */
     emptyMessage: string;
-    /** Plantilla del reporte de paginación; admite {first}, {last} y {total}. */
+    /** Plantilla del reporte de paginación; admite {first}, {last} y {filtered}. */
     pageReport: string;
     /** Plantilla del placeholder de cada filtro de columna; admite {column}. */
     searchByColumn: string;
@@ -36,7 +36,7 @@ const ENGLISH_STRINGS: GridStrings = {
     columnsPlaceholder: 'Columns',
     selectAllColumns: 'Select all',
     emptyMessage: 'No records found.',
-    pageReport: 'Showing {first} to {last} of {total} entries',
+    pageReport: 'Showing {first} to {last} entries · Filtered: {filtered}',
     searchByColumn: 'Search by {column}',
     exportSheetName: 'Data'
 };
@@ -49,7 +49,7 @@ const SPANISH_STRINGS: GridStrings = {
     columnsPlaceholder: 'Columnas',
     selectAllColumns: 'Todas',
     emptyMessage: 'No se encontraron registros.',
-    pageReport: 'Mostrando {first} a {last} de {total} registros',
+    pageReport: 'Mostrando {first} a {last} registros · Filtrados: {filtered}',
     searchByColumn: 'Buscar en {column}',
     exportSheetName: 'Datos'
 };

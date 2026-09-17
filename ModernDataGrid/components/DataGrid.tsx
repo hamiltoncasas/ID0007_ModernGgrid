@@ -590,6 +590,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         return this.getFilteredRecords(this.state.records).filter((record) => this.matchesColumnFilters(record));
     }
 
+    /** Cantidad de registros que cumplen los filtros activos (buscador global + columnas). */
+    getFilteredRecordCount(): number {
+        return this.getRecordsForExport().length;
+    }
+
     matchesColumnFilters(record: any): boolean {
         const filters = this.state.filters || {};
 
@@ -969,7 +974,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                     filterDisplay={filterDisplayType as "menu" | "row"}
                     globalFilterFields={this.state.columns.map(col => col.name)}
                     emptyMessage={emptyMessage}
-                    currentPageReportTemplate={formatTemplate(strings.pageReport, { total: String(paging.totalResultCount) })}
+                    currentPageReportTemplate={formatTemplate(strings.pageReport, { filtered: String(this.getFilteredRecordCount()) })}
                     scrollable
                     scrollHeight="flex"
                     rowClassName={(row: any) => this.getRowClassName(row)}

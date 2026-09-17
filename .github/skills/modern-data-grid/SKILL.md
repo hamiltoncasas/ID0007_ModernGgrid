@@ -33,7 +33,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.21`
+- Solution version: `1.0.0.22`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -46,6 +46,7 @@ The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `
 - Global search across mapped record fields.
 - Column filters controlled through `filters` and `onFilter`; keep this callback when editing filters.
 - Manual refresh button that resets paging and calls `DataSource.refresh()`.
+- The pagination report shows the visible range plus the **filtered** count (`Mostrando 51 a 54 registros · Filtrados: 54`), not the database total; page navigation still uses the dataset total.
 - `InitialColumns` property: comma-separated column names, aliases, or display names; empty means all columns.
 - Internal horizontal and vertical scrolling constrained to the PCF host dimensions.
 - Managed and unmanaged solution packaging.

@@ -10,9 +10,9 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.21` |
+| Versión de la solución | `1.0.0.22` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.34` |
+| Versión del control (manifest) | `0.0.35` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
 > La versión del manifest (`0.0.33`) y la versión de la solución (`1.0.0.20`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
@@ -190,6 +190,14 @@ Con `AllowSorting = true` se puede ordenar por cada columna (ascendente/descende
 
 ### 7.4 Paginación y refresco
 El paginador trabaja **contra el dataset** (`loadNextPage`, `loadPreviousPage`, `loadExactPage`, `setPageSize`), por lo que se puede recorrer todo el conjunto de datos aunque no esté cargado de golpe. El botón de **refrescar** (icono circular) vuelve a la página 1 y llama a `DataSource.refresh()`, limpiando además la selección.
+
+El texto del paginador muestra el rango visible y la **cantidad filtrada** (registros que cumplen el buscador global y los filtros de columna):
+
+```text
+Mostrando 51 a 54 registros · Filtrados: 54
+```
+
+El **total de la tabla en la base de datos no se muestra**; la navegación por páginas sigue usando el total del dataset para calcular los números de página.
 
 ### 7.5 Selección de registros
 `SelectionMode`: `multiple` o `checkbox`. La selección se publica en el dataset (`setSelectedRecordIds`), de modo que la app puede leerla. Con `IsEnabled = false` no se permite seleccionar.
@@ -477,6 +485,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.22` / `0.0.35` | El reporte del paginador muestra el rango visible y la **cantidad filtrada** en lugar del total de la base de datos (*Mostrando 51 a 54 registros · Filtrados: 54*) |
 | `1.0.0.21` / `0.0.34` | **Arreglado**: `FieldConfigurations` ahora se aplica **por columna** (moneda, decimales, etiquetas Sí/No y `dateFormat`), resolviendo la columna por nombre, alias o nombre para mostrar. Nueva propiedad **`DateFormat`** con 36 formatos de fecha, fecha y hora y hora. Documentación **propiedad a propiedad** en `DOCUMENTATION.md` |
 | `1.0.0.20` / `0.0.33` | Iconos de buscar, refrescar y exportar como **SVG en línea** (sin depender de la fuente de PrimeIcons, que en algunos entornos no carga y dejaba iconos vacíos); barra con altura uniforme de 2,5 rem; botones cuadrados alineados con el buscador; combo de columnas más grande; documentación en `DOCUMENTATION.md` |
 | `1.0.0.19` / `0.0.32` | Nueva propiedad **`RowColorRules`** para colorear el registro completo según el valor de una columna (con `~` contiene, `*` comodín, color de texto, hover y selección) |
