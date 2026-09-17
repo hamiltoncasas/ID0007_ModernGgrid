@@ -48,7 +48,37 @@ Luego, en las propiedades del control:
 |---|---|
 | `Items` / origen del dataset | la tabla o colección a mostrar |
 | `Default Rows` | mayor que `0` (si no, no hay paginación real) |
-| `Enable` | `true` para permitir la selección de registros |
+| `IsEnabled` | `true` para permitir la selección de registros |
+
+## 4.1 Cómo configurar las propiedades (paso a paso)
+
+**Canvas App**
+
+1. Selecciona el control **ModernDataGrid** en el lienzo.
+2. Abre el **panel de propiedades** de la derecha (o el panel avanzado, que lista las propiedades del componente).
+3. Localiza la propiedad por su nombre (por ejemplo **Column Labels**) y escribe el valor en su caja.
+4. También puedes hacerlo desde la barra de fórmulas de la app:
+
+```text
+ModernDataGrid1.ColumnLabels = "nombre=Nombre completo, importe=Importe (€)"
+```
+
+5. Si acabas de importar una versión nueva del componente, **cierra y vuelve a abrir** la app (caché del navegador).
+
+> En Power Apps, si el texto contiene comillas dobles (`"`), duplícalas (`""`). Acentos, `€`, `(`, `)`, `:`, `|` y apóstrofos funcionan sin problema.
+
+**Formulario model-driven**
+
+1. Edita el formulario y selecciona el control.
+2. En **Propiedades** del control, rellena el campo de la propiedad (por ejemplo *Column Labels*).
+3. Guarda y publica.
+
+## 4.2 Cómo identificar una columna
+
+- **En Dataverse**: Tablas → tu tabla → *Columnas*: **Name** es el nombre lógico (`cuentas_pk`) y **Display name** el nombre visible (`Cuenta`). Cualquiera de los dos sirve.
+- **En la app**: el nombre que ya ves en la grilla es el *Display name* del dataset, así que puedes copiarlo tal cual.
+- **Mayúsculas y acentos no importan** (`IMPORTE` = `importe` = `Importé`).
+- Los **espacios internos** sí cuentan (`Campo A` ≠ `CampoA`); los del principio y el final se ignoran.
 
 ## 5. Propiedades
 
@@ -436,6 +466,17 @@ ColumnLabels        → importe=Importe (€)
 FieldConfigurations → Importe (€)=currency:EUR
 RowColorRules       → Importe (€)=~1.000:#FFF4CE
 ```
+
+Para saber **dónde** se escribe esta propiedad en la app, ver §4.1; para saber qué identificador usar en cada columna, §4.2.
+
+**Diagnóstico**: si una entrada no se aplica, la consola del navegador (F12) indica el motivo:
+
+```text
+ColumnLabels: la columna "cuentas" no existe en el dataset.
+ColumnLabels: entrada no válida "Nombre completo" (se espera columna=Etiqueta).
+```
+
+**Nota**: la etiqueta es un texto único, **no cambia con la propiedad `Language`**. Si necesitas nombres distintos por idioma, hoy hay que usar una app por idioma (o pedir etiquetas por idioma como mejora).
 
 ## 9. Detalles técnicos
 
