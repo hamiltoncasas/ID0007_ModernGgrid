@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-import { FilterMatchMode, FilterOperator } from 'primereact/api';
+import { FilterMatchMode, FilterOperator, FilterService } from 'primereact/api';
 import { DataTable } from 'primereact/datatable';
 import isEqual from 'lodash.isequal';
 import { Column } from 'primereact/column';
@@ -7,8 +7,13 @@ import { InputText } from 'primereact/inputtext';
 import { IconField } from 'primereact/iconfield';
 import { InputIcon } from 'primereact/inputicon';
 import { Button } from 'primereact/button';
+import { MultiSelect } from 'primereact/multiselect';
+import { RefreshIcon } from 'primereact/icons/refresh';
 import { IInputs } from "../generated/ManifestTypes";
 import { formatDate, getAvailableDatePatterns } from '../helpers/Utils';
+import { exportRowsToExcel } from '../helpers/ExcelExport';
+import { applyPrimeReactLanguage, formatTemplate, getStrings, GridStrings, Language } from '../helpers/Localization';
+import { ExcelIcon } from './ExcelIcon';
 import 'primereact/resources/themes/saga-blue/theme.css';
 import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
@@ -32,17 +37,21 @@ interface DataGridState {
     needsRefresh: boolean;
     currentPage: number;
     totalPages: number;
+    /** Columnas que el usuario final decidió ver; null = todas las disponibles. */
+    selectedColumns: string[] | null;
 }
 
 class DataGrid extends Component<DataGridProps, DataGridState> {
     private filterMap: Map<string, any> = new Map();
     private intervalId: NodeJS.Timeout | null = null;
+    private appliedLanguage: Language | null = null;
     static contextType = React.createContext<ComponentFramework.Context<IInputs> | undefined>(undefined);
     declare context: React.ContextType<typeof DataGrid.contextType>;
     constructor(props: DataGridProps) {
         super(props);
         this.state = {
             records: [],
+            selectedColumns: null,
             totalPages: 1,
             selectedRecords: [],
             selectedRecordIds: [],
@@ -60,6 +69,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             needsRefresh: false,
             currentPage: 1,
         };
+
+        this.applyLanguage();
     }
 
     componentDidMount() {
@@ -354,6 +365,15 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     }
     // Triggers when new data set is loaded in
     shouldComponentUpdate(nextProps: Readonly<DataGridProps>, nextState: Readonly<DataGridState>): boolean {
+        // El idioma se aplica antes de renderizar porque PrimeReact lee su locale al pintar.
+        const nextLanguage: Language = nextProps.context.parameters.Language?.raw === 'es' ? 'es' : 'en';
+        if (this.appliedLanguage !== nextLanguage) {
+            applyPrimeReactLanguage(nextLanguage);
+            this.appliedLanguage = nextLanguage;
+
+            return true;
+        }
+
         console.log("component udpated")
         console.log(this.props.context.parameters.DataSource.columns)
         console.log(this.props.context.parameters.DataSource)
@@ -398,6 +418,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return true;
         }
 
+        if (JSON.stringify(this.state.selectedColumns) !== JSON.stringify(nextState.selectedColumns)) {
+            //console.log("Column selection has changed. Component should update.");
+            return true;
+        }
+
         //console.log("No changes detected, component should not update.");
         return false;
     }
@@ -430,7 +455,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             .filter(Boolean);
     }
 
-    getVisibleColumns(): ComponentFramework.PropertyHelper.DataSetApi.Column[] {
+    /** Columnas disponibles para el control (respeta InitialColumns cuando está definido). */
+    getBaseColumns(): ComponentFramework.PropertyHelper.DataSetApi.Column[] {
         const columns = this.props.context.parameters.DataSource.columns;
         const requestedColumns = this.getInitialColumnNames();
         if (!requestedColumns.length) return columns;
@@ -440,6 +466,27 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                 .filter(Boolean)
                 .some((name) => requestedColumns.includes(name!.toLowerCase()))
         );
+    }
+
+    /** Opciones que el usuario final puede marcar o desmarcar en el selector. */
+    getColumnOptions(): Array<{ label: string; value: string }> {
+        return this.getBaseColumns().map((column) => ({
+            label: column.displayName || column.name,
+            value: column.name
+        }));
+    }
+
+    /** Selección efectiva: la elegida por el usuario o todas las columnas disponibles. */
+    getSelectedColumnNames(): string[] {
+        return this.state.selectedColumns ?? this.getBaseColumns().map((column) => column.name);
+    }
+
+    getVisibleColumns(): ComponentFramework.PropertyHelper.DataSetApi.Column[] {
+        const baseColumns = this.getBaseColumns();
+        const selectedColumns = this.state.selectedColumns;
+        if (!selectedColumns) return baseColumns;
+
+        return baseColumns.filter((column) => selectedColumns.includes(column.name));
     }
 
     getFilteredRecords(records: any[]): any[] {
@@ -468,7 +515,128 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         });
     };
 
+    onColumnSelectionChange = (event: any) => {
+        const value = Array.isArray(event?.value) ? (event.value as string[]) : [];
+        this.setState({ selectedColumns: value });
+    };
+
+    /** Estado de filtros completo: garantiza un modelo por cada columna del dataset. */
+    getFiltersForTable(): any {
+        const columns = this.props.context.parameters.DataSource.columns || [];
+        const currentFilters = this.state.filters || {};
+
+        if (!columns.some((column) => !currentFilters[column.name])) {
+            return currentFilters;
+        }
+
+        return columns.reduce((acc: any, column) => {
+            if (!acc[column.name]) {
+                acc[column.name] = {
+                    operator: FilterOperator.AND,
+                    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }]
+                };
+            }
+            return acc;
+        }, { ...currentFilters });
+    }
+
+    /** Filas visibles con los filtros activos (búsqueda global y filtros por columna). */
+    getRecordsForExport(): any[] {
+        return this.getFilteredRecords(this.state.records).filter((record) => this.matchesColumnFilters(record));
+    }
+
+    matchesColumnFilters(record: any): boolean {
+        const filters = this.state.filters || {};
+
+        return Object.keys(filters)
+            .filter((field) => field !== 'global')
+            .every((field) => {
+                const filterModel = filters[field];
+                if (!filterModel) return true;
+
+                const constraints = filterModel.constraints ? filterModel.constraints : [filterModel];
+                const activeConstraints = constraints.filter(
+                    (constraint: any) =>
+                        constraint && constraint.value !== null && constraint.value !== undefined && constraint.value !== ''
+                );
+                if (!activeConstraints.length) return true;
+
+                const results = activeConstraints.map((constraint: any) => this.evaluateConstraint(record, field, constraint));
+                return filterModel.operator === FilterOperator.OR ? results.some(Boolean) : results.every(Boolean);
+            });
+    }
+
+    evaluateConstraint(record: any, field: string, constraint: any): boolean {
+        const matchMode = constraint.matchMode || FilterMatchMode.STARTS_WITH;
+        const filterPredicate = (FilterService as any).filters?.[matchMode];
+        if (typeof filterPredicate !== 'function') return true;
+
+        return filterPredicate(this.resolveRecordField(record, field), constraint.value);
+    }
+
+    resolveRecordField(record: any, field: string): any {
+        if (!record) return undefined;
+        if (field.indexOf('.') === -1) return record[field];
+
+        return field
+            .split('.')
+            .reduce(
+                (current: any, part: string) => (current === null || current === undefined ? undefined : current[part]),
+                record
+            );
+    }
+
+    getExportFileName(): string {
+        const headerText = this.props.context.parameters.HeaderText?.raw;
+        const dataSet = this.props.context.parameters.DataSource;
+        const targetEntityType =
+            typeof dataSet.getTargetEntityType === 'function' ? dataSet.getTargetEntityType() : undefined;
+
+        return (headerText || targetEntityType || 'ModernDataGrid').toString();
+    }
+
+    getExportFileStamp(): string {
+        const now = new Date();
+        const pad = (value: number) => value.toString().padStart(2, '0');
+        return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    }
+
+    exportToExcel = () => {
+        const columns = this.getVisibleColumns().map((column) => ({
+            header: column.displayName || column.name,
+            field: column.name
+        }));
+        if (!columns.length) return;
+
+        exportRowsToExcel({
+            fileName: `${this.getExportFileName()}_${this.getExportFileStamp()}`,
+            sheetName: this.getStrings().exportSheetName,
+            columns,
+            rows: this.getRecordsForExport()
+        }).catch((error) => console.error('Error exporting to Excel:', error));
+    };
+
+    /** Idioma configurado en la propiedad Language del manifest. */
+    getLanguage(): Language {
+        return this.props.context.parameters.Language?.raw === 'es' ? 'es' : 'en';
+    }
+
+    /** Textos del control (buscador, botones, mensajes y exportación). */
+    getStrings(): GridStrings {
+        return getStrings(this.getLanguage());
+    }
+
+    /** Activa el idioma de los textos propios y de los internos de PrimeReact. */
+    applyLanguage(): void {
+        const language = this.getLanguage();
+        if (this.appliedLanguage === language) return;
+
+        applyPrimeReactLanguage(language);
+        this.appliedLanguage = language;
+    }
+
     renderHeader() {
+        const strings = this.getStrings();
         const displayHeader = this.props.context.parameters.DisplayHeader?.raw ?? false;
         const displaySearch = this.props.context.parameters.DisplaySearch?.raw ?? false;
         const headerText = this.props.context.parameters.HeaderText?.raw ?? this.props.context.parameters.DataSource.getTargetEntityType();
@@ -481,13 +649,45 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             <div className="modern-data-grid-header flex flex-wrap gap-2 justify-content-between align-items-center">
                 <h4 className="m-0">{headerText}</h4>
                 <div className="modern-data-grid-actions flex align-items-center gap-2">
+                    {this.getColumnOptions().length > 0 && (
+                        <MultiSelect
+                            value={this.getSelectedColumnNames()}
+                            options={this.getColumnOptions()}
+                            onChange={this.onColumnSelectionChange}
+                            placeholder={strings.columnsPlaceholder}
+                            filter
+                            selectAllLabel={strings.selectAllColumns}
+                            scrollHeight="18rem"
+                            className="modern-data-grid-column-selector"
+                            panelClassName="modern-data-grid-columns-panel"
+                            aria-label={strings.columnsSelector}
+                            tooltip={strings.columnsSelector}
+                        />
+                    )}
                     {displaySearch && (
                         <IconField iconPosition="left">
                             <InputIcon className="pi pi-search" />
-                            <InputText value={this.state.globalFilterValue} onChange={this.onGlobalFilterChange} placeholder="Keyword Search" />
+                            <InputText value={this.state.globalFilterValue} onChange={this.onGlobalFilterChange} placeholder={strings.keywordSearch} />
                         </IconField>
                     )}
-                    <Button type="button" icon="pi pi-refresh" text rounded aria-label="Refresh" tooltip="Refresh" onClick={this.refreshData} />
+                    <Button
+                        type="button"
+                        icon={<RefreshIcon />}
+                        text
+                        rounded
+                        aria-label={strings.refresh}
+                        tooltip={strings.refresh}
+                        onClick={this.refreshData}
+                    />
+                    <Button
+                        type="button"
+                        icon={<ExcelIcon />}
+                        text
+                        rounded
+                        aria-label={strings.exportToExcel}
+                        tooltip={strings.exportToExcel}
+                        onClick={this.exportToExcel}
+                    />
                 </div>
             </div>
         );
@@ -529,13 +729,16 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
     render() {
         const { context } = this.props;
+        const strings = this.getStrings();
         const paging = context.parameters.DataSource.paging;
-        const { selectedRecordIds, filters } = this.state;
+        const { selectedRecordIds } = this.state;
+        const filters = this.getFiltersForTable();
         const records = this.getFilteredRecords(this.state.records);
         const header = this.renderHeader();
         const displayPagination = context.parameters.DisplayPagination?.raw ?? true;
-        const emptyMessage = context.parameters.EmptyMessage?.raw ?? "No records found.";
-        const filterDisplayType = "row";
+        const emptyMessage = context.parameters.EmptyMessage?.raw ?? strings.emptyMessage;
+        // "menu": el icono de filtro de cada columna despliega el buscador con "Contains".
+        const filterDisplayType = "menu";
         const allowedSelectionModes: Array<"multiple" | "checkbox"> = ["multiple", "checkbox"];
         const selectionMode = (context.parameters.SelectionMode?.raw && allowedSelectionModes.includes(context.parameters.SelectionMode?.raw as any))
             ? (context.parameters.SelectionMode?.raw as "multiple" | "checkbox")
@@ -668,7 +871,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                     filterDisplay={filterDisplayType as "menu" | "row"}
                     globalFilterFields={this.state.columns.map(col => col.name)}
                     emptyMessage={emptyMessage}
-                    currentPageReportTemplate={`Showing {first} to {last} of ${paging.totalResultCount} entries`}
+                    currentPageReportTemplate={formatTemplate(strings.pageReport, { total: String(paging.totalResultCount) })}
                     scrollable
                     scrollHeight="flex"
                     className="modern-data-grid-table"
@@ -684,8 +887,9 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                             sortable={allowSorting}
                             filter={allowFiltering}
                             filterMatchMode={FilterMatchMode.CONTAINS}
-                            filterPlaceholder={`Search by ${col.displayName}`}
+                            filterPlaceholder={formatTemplate(strings.searchByColumn, { column: col.displayName })}
                             showFilterMatchModes
+                            showApplyButton={false}
                             style={{ minWidth: '12rem' }}
                             body={(item) => onRenderItemColumn(item, undefined, { fieldName: col.name } as IColumn)}
                         />

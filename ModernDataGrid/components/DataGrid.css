@@ -20,6 +20,43 @@
 .modern-data-grid-actions {
     min-width: 0;
     max-width: 100%;
+    flex-wrap: wrap;
+}
+
+.modern-data-grid-actions .modern-data-grid-column-selector {
+    flex: 0 0 auto;
+    width: auto;
+}
+
+/* El disparador del selector solo muestra su icono: sin textos ni chips. */
+.modern-data-grid-actions .modern-data-grid-column-selector .p-multiselect-label {
+    display: none;
+}
+
+.modern-data-grid-actions .modern-data-grid-column-selector .p-multiselect-label-container {
+    flex: 0 0 auto;
+    width: 0;
+    min-width: 0;
+}
+
+/* La barra se reparte el ancho disponible y los botones nunca quedan fuera. */
+.modern-data-grid-actions .p-icon-field.p-icon-field-left {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+
+.modern-data-grid-actions .p-icon-field.p-icon-field-left > .p-inputtext {
+    width: 100%;
+}
+
+/* El panel del selector de columnas se renderiza en document.body (Portal). */
+.modern-data-grid-columns-panel {
+    font-size: 0.875rem;
+    min-width: 14rem;
+}
+
+.modern-data-grid-columns-panel .p-multiselect-items {
+    min-width: 12rem;
 }
 
 .modern-data-grid-table {

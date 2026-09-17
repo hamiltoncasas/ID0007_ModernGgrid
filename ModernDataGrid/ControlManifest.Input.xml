@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest>
-  <control namespace="ID0007" constructor="ModernDataGrid" version="0.0.29" display-name-key="ModernDataGrid" description-key="ModernDataGrid description" control-type="virtual">
+  <control namespace="ID0007" constructor="ModernDataGrid" version="0.0.31" display-name-key="ModernDataGrid" description-key="ModernDataGrid description" control-type="virtual">
     <!-- dataset node represents a set of entity records on CDS; allow more than one datasets -->
     <data-set name="DataSource" display-name-key="Data source">
       <!-- 'property-set' node represents a unique, configurable property that each record in the dataset must provide. -->
@@ -20,5 +20,9 @@
     <property name="IsEnabled" display-name-key="Enable" description-key="Enables or disables the Data Grid" of-type="TwoOptions" usage="bound" default-value="true" />
     <property name="FieldConfigurations" display-name-key="Field Configurations" description-key="Allows custom configurations to be set on column values" of-type="SingleLine.TextArea" usage="bound" default-value="CurrencyField=currency:GBP, DateField=dateFormat:yyyy-MM-dd, DecimalField=decimalPlaces:2, BooleanField=trueLabel:Yes|falseLabel:No" />
     <property name="InitialColumns" display-name-key="Initial Columns" description-key="Comma-separated column names or aliases to display when the app loads. Leave empty to display all columns." of-type="SingleLine.TextArea" usage="bound" default-value="" />
+    <property name="Language" display-name-key="Language" description-key="Language used by the grid texts (search, buttons, filters and Excel export)" of-type="Enum" usage="bound" default-value="en">
+      <value name="en" display-name-key="English">en</value>
+      <value name="es" display-name-key="Español">es</value>
+    </property>
   </control>
 </manifest>
