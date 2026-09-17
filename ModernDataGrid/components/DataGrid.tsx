@@ -40,7 +40,8 @@ interface DataGridState {
     previousParameters: { [key in keyof IInputs]?: any };
     enabled: boolean;
     needsRefresh: boolean;
-    currentPage: number;
+    /** Se incrementa para reiniciar la vista del grid (paginador a la página 1). */
+    gridEpoch: number;
     totalPages: number;
     /** Columnas que el usuario final decidió ver; null = todas las disponibles. */
     selectedColumns: string[] | null;
@@ -52,7 +53,10 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     private appliedLanguage: Language | null = null;
     private columnLabelsCache: { key: string; labels: Record<string, string> } | null = null;
     private rowColorsCache: { key: string; compiled: CompiledRowColors } | null = null;
+    private autoLoadFrom = -1;
     private rowColorStyleElement: HTMLStyleElement | null = null;
+    /** Tope de filas que se cargan automáticamente para poder paginar y filtrar en cliente. */
+    private static readonly maxAutoLoadedRows = 2000;
     static contextType = React.createContext<ComponentFramework.Context<IInputs> | undefined>(undefined);
     declare context: React.ContextType<typeof DataGrid.contextType>;
     constructor(props: DataGridProps) {
@@ -75,7 +79,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             previousParameters: {},
             enabled: props.context.parameters.IsEnabled?.raw ?? true,
             needsRefresh: false,
-            currentPage: 1,
+            gridEpoch: 1,
         };
 
         this.applyLanguage();
@@ -93,6 +97,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.saveCurrentParametersToState();
         this.checkAndStartInterval();
         this.syncRowColorStyles();
+        this.ensureMoreRowsLoaded();
         this.forceRefreshDataset();
 
     }
@@ -348,9 +353,16 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return;
         }
 
+        // Trae de la fuente las páginas que falten para poder paginar/filtrar en cliente.
+        this.ensureMoreRowsLoaded();
+
         const dataSourceChanged = prevProps.context.parameters.DataSource !== this.props.context.parameters.DataSource;
         const sortedRecordIdsChanged =
             JSON.stringify(prevProps.context.parameters.DataSource.sortedRecordIds) !== JSON.stringify(dataSet.sortedRecordIds);
+
+        if (sortedRecordIdsChanged) {
+            this.logPaginationInfo();
+        }
 
         const filtersChanged = JSON.stringify(prevState.filters) !== JSON.stringify(this.state.filters);
         const prevFieldConfigurations = prevProps.context.parameters.FieldConfigurations?.raw || "";
@@ -472,6 +484,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return true;
         }
 
+        if (this.state.gridEpoch !== nextState.gridEpoch) {
+            //console.log("Grid must be reset. Component should update.");
+            return true;
+        }
+
         //console.log("No changes detected, component should not update.");
         return false;
     }
@@ -497,7 +514,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             dataSet.clearSelectedRecordIds();
         }
         dataSet.paging.reset();
-        this.setState({ currentPage: 1, selectedRecordIds: [], selectedRecords: [] });
+        this.autoLoadFrom = -1;
+        this.setState(
+            { gridEpoch: this.state.gridEpoch + 1, selectedRecordIds: [], selectedRecords: [] },
+            () => this.forceUpdate()
+        );
 
         // Pedir de nuevo los datos a la fuente de origen y repintar cuando responda.
         dataSet.refresh();
@@ -878,96 +899,63 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }, 300);
     };
 
-    /** true si el dataset puede paginar (tiene API de paging y tamaño de página). */
-    isDataSetPagingAvailable(): boolean {
-        const paging = this.props.context.parameters.DataSource?.paging;
-
-        return !!paging && typeof paging.loadExactPage === 'function' && paging.pageSize > 0;
-    }
-
-    /** Tamaño de página usado cuando la grilla pagina en cliente. */
-    getClientPageSize(): number {
+    /** Filas por página del pie: el tamaño del dataset o 25 si no lo informa. */
+    getPageSize(): number {
         const pageSize = this.props.context.parameters.DataSource?.paging?.pageSize;
 
         return pageSize && pageSize > 0 ? pageSize : 25;
     }
 
-    /** Páginas que se pueden mostrar con las filas ya cargadas. */
-    getLoadedPageCount(): number {
-        const rows = this.getClientPageSize();
-
-        return Math.max(1, Math.ceil(this.getFilteredRecordCount() / rows));
-    }
-
     /**
      * Propiedades de paginación de la grilla.
      *
-     * - Si el dataset puede paginar se navega contra él, pero **solo** cuando hace
-     *   falta traer filas nuevas (página siguiente fuera de lo cargado); moverse
-     *   entre páginas ya cargadas es inmediato y no depende del dataset.
-     * - Si el dataset no puede paginar (por ejemplo `pageSize` = 0) se pagina en
-     *   cliente sobre las filas cargadas, de modo que el pie siempre responde.
+     * La grilla pagina **siempre en cliente** sobre las filas cargadas: así el pie
+     * responde en cualquier host (con o sin paginación real en el dataset, con
+     * `totalResultCount` conocido o `-1`) y nunca deja la tabla vacía. Las páginas
+     * que falten se traen de la fuente en segundo plano (`ensureMoreRowsLoaded`).
      */
-    getPaginationProps(paginator: boolean): any {
-        if (!this.isDataSetPagingAvailable()) {
-            return {
-                paginator,
-                rows: this.getClientPageSize()
-            };
-        }
-
-        const paging = this.props.context.parameters.DataSource.paging;
-        const totalKnown = paging.totalResultCount > 0;
-
-        return {
-            paginator,
-            rows: paging.pageSize,
-            // Total conocido -> el del dataset. Desconocido (-1) -> lo cargado y, si la
-            // fuente indica que hay más, una página extra para poder pedirla.
-            totalRecords: totalKnown
-                ? paging.totalResultCount
-                : this.getFilteredRecordCount() + (paging.hasNextPage ? paging.pageSize : 0),
-            first: (this.state.currentPage - 1) * paging.pageSize,
-            onPage: this.onPageChange
-        };
+    getPaginationProps(paginator: boolean): { paginator: boolean; rows: number } {
+        return { paginator, rows: this.getPageSize() };
     }
 
-    /** Navegación del pie: mueve la vista y pide más datos solo cuando hacen falta. */
-    onPageChange = (event: any) => {
-        const { page, rows } = event;
-        const paging = this.props.context.parameters.DataSource?.paging;
+    /**
+     * Pide a la fuente las páginas que falten (con tope de seguridad) para que haya
+     * filas que paginar, filtrar y exportar. Se detiene cuando la fuente ya no tiene
+     * más páginas o cuando se alcanza el tope.
+     */
+    ensureMoreRowsLoaded(): void {
+        const dataSet = this.props.context.parameters.DataSource;
+        const paging = dataSet?.paging;
 
-        if (!paging || rows <= 0) {
+        if (!paging || typeof paging.loadNextPage !== 'function' || !paging.hasNextPage) {
             return;
         }
 
-        const targetPage = page + 1;
+        const loadedRows = dataSet.sortedRecordIds ? dataSet.sortedRecordIds.length : 0;
 
-        // Cambio de filas por página: se vuelve a la primera página.
-        if (rows !== paging.pageSize) {
-            paging.setPageSize(rows);
-            paging.reset();
-            this.setState({ currentPage: 1 }, () => this.forceRefreshDataset());
-
+        if (loadedRows >= DataGrid.maxAutoLoadedRows || loadedRows === this.autoLoadFrom) {
             return;
         }
 
-        if (targetPage === this.state.currentPage) {
-            this.forceUpdate();
+        this.autoLoadFrom = loadedRows;
+        paging.loadNextPage();
+    }
 
-            return;
-        }
+    /** Deja en la consola el estado de la paginación (útil para diagnosticar). */
+    logPaginationInfo(): void {
+        const dataSet = this.props.context.parameters.DataSource;
+        const paging = dataSet?.paging;
+        const pageSize = this.getPageSize();
 
-        // Si la página pedida está más allá de lo cargado, se piden más filas a la
-        // fuente; si ya está cargada, no se toca el dataset (así "anterior" y los
-        // saltos dentro de lo cargado funcionan siempre).
-        if (targetPage > this.getLoadedPageCount()) {
-            paging.loadNextPage();
-        }
-
-        this.setState({ currentPage: targetPage }, () => this.forceRefreshDataset());
-        this.forceUpdate();
-    };
+        console.log('[ModernDataGrid] paginación', {
+            filasCargadas: dataSet?.sortedRecordIds ? dataSet.sortedRecordIds.length : 0,
+            filasFiltradas: this.getFilteredRecordCount(),
+            filasPorPagina: pageSize,
+            paginas: Math.max(1, Math.ceil(this.getFilteredRecordCount() / pageSize)),
+            totalResultCount: paging?.totalResultCount,
+            hasNextPage: paging?.hasNextPage
+        });
+    }
 
     /** Limpia el buscador global y todos los filtros de columna. */
     clearFilters = () => {
@@ -981,7 +969,10 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return acc;
         }, {});
 
-        this.setState({ filters: clearedFilters, globalFilterValue: '', currentPage: 1 }, () => this.forceUpdate());
+        this.setState(
+            { filters: clearedFilters, globalFilterValue: '', gridEpoch: this.state.gridEpoch + 1 },
+            () => this.forceUpdate()
+        );
     };
 
     /** true si hay algún filtro activo (de columna o búsqueda global). */
@@ -1066,6 +1057,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         return (
             <div className="modern-data-grid card">
                 <DataTable
+                    key={`modern-data-grid-${this.state.gridEpoch}`}
                     value={records}
                     {...this.getPaginationProps(displayPagination)}
                     header={header}

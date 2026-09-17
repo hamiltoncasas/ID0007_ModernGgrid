@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.26` |
+| Versión de la solución | `1.0.0.27` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.39` |
+| Versión del control (manifest) | `0.0.40` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.39`) y la versión de la solución (`1.0.0.26`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.40`) y la versión de la solución (`1.0.0.27`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 
 ## 2. Requisitos
 
@@ -274,19 +274,13 @@ Escribe y filtra **mientras escribes** (con un pequeño retardo), y acepta `Ente
 Con `AllowSorting = true` se puede ordenar por cada columna (ascendente/descendente) sobre las filas cargadas.
 
 ### 7.4 Paginación y refresco
-El paginador trabaja **contra el dataset** (`loadNextPage`, `loadExactPage`, `setPageSize`), por lo que se puede recorrer todo el conjunto de datos aunque no esté cargado de golpe. El botón de **refrescar** (icono circular) vuelve a la página 1, **limpia la selección** (local y en el dataset) y **vuelve a pedir los datos a la fuente de origen** (`refresh()`), repintando la grilla cuando la fuente responde.
+El pie de páginas pagina **siempre en cliente** sobre las filas cargadas. Así responde en cualquier host —con o sin paginación real en el dataset, con `totalResultCount` conocido o `-1`— y **nunca deja la tabla vacía**. Para que haya filas que paginar, el control **trae de la fuente las páginas que falten** en segundo plano (hasta un tope de seguridad de **2000 filas**), empezando por las que carga la app según `Default Rows`.
 
-#### Escenarios del pie de páginas
-
-Desde `1.0.0.26` el pie funciona en los tres casos posibles:
-
-| Escenario | Comportamiento |
-|---|---|
-| El dataset informa el total (`totalResultCount > 0`) | El paginador muestra todas las páginas y navega contra el dataset |
-| El dataset **no** informa el total (`-1`, habitual en Canvas cuando la fuente no se puede paginar en origen) | Se muestra lo cargado más una página extra mientras la fuente indique que hay más (`hasNextPage`); al pedirla se traen filas nuevas |
-| El dataset **no** puede paginar (`pageSize = 0`) | La grilla pagina en cliente sobre las filas cargadas, así el pie siempre responde |
-
-Moverse entre páginas **ya cargadas** es inmediato (no consulta la fuente); solo se piden datos nuevos al pasar a una página que todavía no está cargada. Así "anterior" y los saltos dentro de lo cargado funcionan siempre.
+- **Filas por página**: el tamaño de página del dataset (`Default Rows`) o **25** si no lo informa; el usuario puede cambiarlo con el desplegable del pie.
+- Moverse entre páginas es **instantáneo** (no consulta la fuente).
+- El pie es **independiente de `totalResultCount`**: si llega `-1` no pasa nada.
+- El botón de **refrescar** (icono circular) vuelve a la primera página, **limpia la selección** (local y en el dataset) y **vuelve a pedir los datos a la fuente de origen** (`refresh()`), repintando la grilla cuando la fuente responde.
+- **Diagnóstico**: en la consola del navegador aparece `[ModernDataGrid] paginación { filasCargadas, filasFiltradas, filasPorPagina, paginas, totalResultCount, hasNextPage }` cada vez que cambian las filas cargadas.
 
 El texto del paginador muestra el rango visible y la **cantidad filtrada** (registros que cumplen el buscador global y los filtros de columna):
 
@@ -606,7 +600,7 @@ Los tipos `SingleLine.Phone` y `SingleLine.URL` se prefijan con `tel:` y `<a hre
 En `FieldConfigurations` y `RowColorRules` los caracteres `:`, `|` y `,` son separadores, por lo que un valor que los contenga no se puede expresar literalmente.
 
 ### 10.5 Filtros, orden y paginación sobre lo cargado
-Los filtros por columna y el ordenamiento actúan sobre las filas ya cargadas en la grilla; la carga de más filas la gobierna el *paging* del dataset. En el **modo cliente** del pie (cuando el dataset no puede paginar, `pageSize = 0`) la paginación también se hace sobre lo cargado: para ver más filas del origen hay que aumentar `Default Rows` en la app.
+Los filtros, el orden y el paginado actúan sobre las filas **cargadas** en la grilla (el filtrado no viaja al origen). El control carga automáticamente las páginas que falten hasta un tope de **2000 filas**; si tu tabla tiene más, amplía `Default Rows` en la app para traer más filas en cada carga.
 
 ### 10.6 La barra requiere cabecera
 El buscador, el selector de columnas, el refresco y la exportación viven en la barra superior: si `DisplayHeader = false`, no se muestran.
@@ -632,7 +626,7 @@ El buscador, el selector de columnas, el refresco y la exportación viven en la 
 | La moneda sale en USD aunque la configuré | Revisa el nombre de la columna en `FieldConfigurations` (nombre, alias o nombre para mostrar) y que la versión sea `1.0.0.21` o superior |
 | Los decimales no cambian de 2 posiciones | Igual que el caso anterior: `Columna=decimalPlaces:3` y versión `1.0.0.21`+ |
 | La importación falla con `XSD validation failed … noAposStringType … The Pattern constraint failed` | Hay un **apóstrofo** (`'`) en un atributo del manifest (normalmente `display-name-key`). Corregido en `1.0.0.25`; si lo ves en otra versión, quita el `'` del atributo |
-| El pie de páginas no navega o queda vacío | Comprueba que `DisplayPagination = true`. Desde `1.0.0.26` el pie funciona aunque el dataset no informe el total (`-1`) o no sepa paginar (en ese caso pagina en cliente sobre lo cargado) |
+| El pie de páginas no navega o queda vacío | Comprueba `DisplayPagination = true`. Desde `1.0.0.27` el pie pagina siempre en cliente sobre las filas cargadas (nunca queda vacío); en la consola, `[ModernDataGrid] paginación` indica cuántas filas se cargaron y si la fuente tiene más páginas |
 | El botón de limpiar filtros está deshabilitado | Es lo esperado: solo se activa cuando hay algún filtro o búsqueda aplicada |
 | El botón de actualizar no trae datos nuevos | Llama a `refresh()` sobre el dataset; si tu origen no lo soporta (por ejemplo una colección local), vuelve a construirla antes de refrescar |
 
@@ -687,6 +681,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.27` / `0.0.40` | **Paginado en cliente real**: el pie deja de depender del dataset (ya no usa `totalResultCount`, `first` ni `onPage`), por lo que navega igual con total conocido, con `-1` o sin paginación en el origen, y **nunca deja la tabla vacía**. El control además **carga automáticamente las páginas que falten** (tope de 2000 filas) y publica el estado de la paginación en la consola |
 | `1.0.0.26` / `0.0.39` | **Paginación adaptativa**: el pie navega aunque el dataset no informe el total (`-1`, típico en Canvas) o no pueda paginar (se pagina en cliente sobre lo cargado), y moverse entre páginas ya cargadas es inmediato. Nuevo botón **Limpiar filtros** y **Actualizar** mejorado: limpia la selección (local y en el dataset) y vuelve a pedir los datos a la fuente (`refresh()`) |
 | `1.0.0.25` / `0.0.38` | **Corregido**: los `display-name-key` del combo `DateFormat` ya no llevan apóstrofos (Dataverse usa el tipo `noAposStringType` y la importación fallaba con *XSD validation failed*). Los patrones con comillas (`d de MMMM de yyyy`, `yyyy-MM-ddTHH:mm:ss`) se muestran sin apóstrofos; el patrón real no cambia |
 | `1.0.0.24` / `0.0.37` | Nueva propiedad **`ColumnLabels`**: el programador define el nombre que verá el usuario para cada columna (`nombre=Nombre completo, importe=Importe (€)`). Se aplica al encabezado, al Excel exportado, al placeholder del filtro y al selector de columnas, y la etiqueta sirve como identificador en `InitialColumns`, `FieldConfigurations` y `RowColorRules` |
