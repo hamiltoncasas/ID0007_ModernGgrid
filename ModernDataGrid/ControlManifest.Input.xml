@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest>
-  <control namespace="ID0007" constructor="ModernDataGrid" version="0.0.37" display-name-key="ModernDataGrid" description-key="ModernDataGrid description" control-type="virtual">
+  <control namespace="ID0007" constructor="ModernDataGrid" version="0.0.38" display-name-key="ModernDataGrid" description-key="ModernDataGrid description" control-type="virtual">
     <!-- dataset node represents a set of entity records on CDS; allow more than one datasets -->
     <data-set name="DataSource" display-name-key="Data source">
       <!-- 'property-set' node represents a unique, configurable property that each record in the dataset must provide. -->
@@ -31,12 +31,12 @@
       <value name="dd_MMM_yyyy" display-name-key="dd/MMM/yyyy  ·  16/sep/2026">dd_MMM_yyyy</value>
       <value name="dd_MMM_yy" display-name-key="dd/MMM/yy  ·  16/sep/26">dd_MMM_yy</value>
       <value name="dd_MMMM_yyyy" display-name-key="dd/MMMM/yyyy  ·  16/septiembre/2026">dd_MMMM_yyyy</value>
-      <value name="d_de_MMMM_de_yyyy" display-name-key="d 'de' MMMM 'de' yyyy  ·  16 de septiembre de 2026">d_de_MMMM_de_yyyy</value>
+      <value name="d_de_MMMM_de_yyyy" display-name-key="d de MMMM de yyyy  ·  16 de septiembre de 2026">d_de_MMMM_de_yyyy</value>
       <value name="MMMM_d_yyyy" display-name-key="MMMM d, yyyy  ·  septiembre 16, 2026">MMMM_d_yyyy</value>
       <value name="MMM_yyyy" display-name-key="MMM yyyy  ·  sep 2026">MMM_yyyy</value>
       <value name="yyyy" display-name-key="yyyy  ·  2026">yyyy</value>
       <value name="EEE_dd_MM_yyyy" display-name-key="EEE dd/MM/yyyy  ·  mié 16/09/2026">EEE_dd_MM_yyyy</value>
-      <value name="EEEE_d_de_MMMM_de_yyyy" display-name-key="EEEE d 'de' MMMM 'de' yyyy  ·  miércoles 16 de septiembre de 2026">EEEE_d_de_MMMM_de_yyyy</value>
+      <value name="EEEE_d_de_MMMM_de_yyyy" display-name-key="EEEE d de MMMM de yyyy  ·  miércoles 16 de septiembre de 2026">EEEE_d_de_MMMM_de_yyyy</value>
       <value name="dd_MM_yyyy_HH_mm" display-name-key="dd/MM/yyyy HH:mm  ·  16/09/2026 18:30">dd_MM_yyyy_HH_mm</value>
       <value name="dd_MM_yyyy_HH_mm_ss" display-name-key="dd/MM/yyyy HH:mm:ss  ·  16/09/2026 18:30:45">dd_MM_yyyy_HH_mm_ss</value>
       <value name="dd_MM_yyyy_hh_mm_a" display-name-key="dd/MM/yyyy hh:mm a  ·  16/09/2026 06:30 p. m.">dd_MM_yyyy_hh_mm_a</value>
@@ -44,12 +44,12 @@
       <value name="d_M_yyyy_HH_mm" display-name-key="d/M/yyyy HH:mm  ·  16/9/2026 18:30">d_M_yyyy_HH_mm</value>
       <value name="yyyy-MM-dd_HH_mm" display-name-key="yyyy-MM-dd HH:mm  ·  2026-09-16 18:30">yyyy-MM-dd_HH_mm</value>
       <value name="yyyy-MM-dd_HH_mm_ss" display-name-key="yyyy-MM-dd HH:mm:ss  ·  2026-09-16 18:30:45">yyyy-MM-dd_HH_mm_ss</value>
-      <value name="yyyy-MM-ddTHH_mm_ss" display-name-key="yyyy-MM-dd'T'HH:mm:ss  ·  2026-09-16T18:30:45">yyyy-MM-ddTHH_mm_ss</value>
+      <value name="yyyy-MM-ddTHH_mm_ss" display-name-key="yyyy-MM-ddTHH:mm:ss  ·  2026-09-16T18:30:45">yyyy-MM-ddTHH_mm_ss</value>
       <value name="dd.MM.yyyy_HH_mm" display-name-key="dd.MM.yyyy HH:mm  ·  16.09.2026 18:30">dd.MM.yyyy_HH_mm</value>
       <value name="dd.MM.yyyy_HH_mm_ss" display-name-key="dd.MM.yyyy HH:mm:ss  ·  16.09.2026 18:30:45">dd.MM.yyyy_HH_mm_ss</value>
       <value name="dd-MM-yyyy_HH_mm" display-name-key="dd-MM-yyyy HH:mm  ·  16-09-2026 18:30">dd-MM-yyyy_HH_mm</value>
       <value name="dd_MMM_yyyy_HH_mm" display-name-key="dd/MMM/yyyy HH:mm  ·  16/sep/2026 18:30">dd_MMM_yyyy_HH_mm</value>
-      <value name="d_de_MMMM_de_yyyy_HH_mm" display-name-key="d 'de' MMMM 'de' yyyy HH:mm  ·  16 de septiembre de 2026 18:30">d_de_MMMM_de_yyyy_HH_mm</value>
+      <value name="d_de_MMMM_de_yyyy_HH_mm" display-name-key="d de MMMM de yyyy HH:mm  ·  16 de septiembre de 2026 18:30">d_de_MMMM_de_yyyy_HH_mm</value>
       <value name="EEE_dd_MM_yyyy_HH_mm" display-name-key="EEE dd/MM/yyyy HH:mm  ·  mié 16/09/2026 18:30">EEE_dd_MM_yyyy_HH_mm</value>
       <value name="HH_mm" display-name-key="HH:mm  ·  18:30">HH_mm</value>
       <value name="HH_mm_ss" display-name-key="HH:mm:ss  ·  18:30:45">HH_mm_ss</value>

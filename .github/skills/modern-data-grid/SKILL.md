@@ -34,7 +34,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.24`
+- Solution version: `1.0.0.25`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -174,11 +174,11 @@ The solution project must keep `<SolutionPackageType>Both</SolutionPackageType>`
 
 After manifest, code, identity, or dependency changes:
 
-1. Run `npm run build`.
+1. Run `npm run build` and confirm that no manifest attribute contains an apostrophe (see Manifest Rules).
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.24`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.25`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -191,7 +191,13 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.37`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.38`, is separate from the four-part Dataverse solution version.
+
+Never use apostrophes (`'`) inside manifest attribute values. Dataverse validates `display-name-key` with the `noAposStringType` type, so a single quote makes the import fail with *XSD validation failed … The Pattern constraint failed*. Patterns that need quotes in date-fns (`d 'de' MMMM 'de' yyyy`, `yyyy-MM-dd'T'HH:mm:ss`) must be written without apostrophes in the manifest; the real pattern lives in `helpers/DateFormat.ts`. Quick check:
+
+```powershell
+Select-String -Path ModernDataGrid\ControlManifest.Input.xml -Pattern "=\"[^""]*\x27"
+```
 
 ## Git Publishing
 

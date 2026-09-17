@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.24` |
+| Versión de la solución | `1.0.0.25` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.37` |
+| Versión del control (manifest) | `0.0.38` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.37`) y la versión de la solución (`1.0.0.24`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.38`) y la versión de la solución (`1.0.0.25`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 
 ## 2. Requisitos
 
@@ -487,9 +487,10 @@ npm run build
 
 1. Edita el código (y el manifest si añades propiedades).
 2. `npm run build` (regenera `generated/ManifestTypes.d.ts`; **no** editar ese archivo a mano).
-3. Sube la versión de la solución en `Solution.xml` si vas a importar la actualización.
-4. Empaqueta con MSBuild y verifica que el log muestre `- ID0007.ModernDataGrid`.
-5. Importa **solo** el ZIP recién generado.
+3. Comprueba que ningún atributo del manifest tenga apóstrofos (ver §9.4).
+4. Sube la versión de la solución en `Solution.xml` si vas a importar la actualización.
+5. Empaqueta con MSBuild y verifica que el log muestre `- ID0007.ModernDataGrid`.
+6. Importa **solo** el ZIP recién generado.
 
 ### 9.4 Notas de implementación (mantenimiento)
 
@@ -503,6 +504,11 @@ npm run build
 - **Formato por columna**: `getColumnConfiguration()` resuelve el bloque de la columna (nombre, alias o nombre para mostrar) y se lo pasa al manejador de tipo; sin bloque, el manejador usa sus valores por defecto. El `dateFormat` de la columna gana sobre la propiedad global `DateFormat`.
 - **Catálogo de fechas**: los tokens de `helpers/DateFormat.ts` y los `<value>` de `DateFormat` en el manifest deben coincidir **en contenido y orden**; hay una prueba automática que los compara y además valida que cada patrón funcione con date-fns.
 - **Normalización compartida**: `normalizeText()` en `helpers/Utils.ts` (sin mayúsculas, sin acentos, sin espacios extremos) se usa tanto para los colores de fila como para resolver la configuración por columna.
+- **Nada de apóstrofos en el manifest**: Dataverse valida los atributos con el tipo `noAposStringType`, así que un `'` (por ejemplo en `display-name-key`) hace fallar la importación con *XSD validation failed … The Pattern constraint failed*. Los patrones de date-fns con comillas (`d 'de' MMMM 'de' yyyy`, `yyyy-MM-dd'T'HH:mm:ss`) se escriben **sin** apóstrofos en el manifest; el patrón real vive en `helpers/DateFormat.ts`. Comprobación rápida antes de empaquetar:
+
+```powershell
+Select-String -Path ModernDataGrid\ControlManifest.Input.xml -Pattern "=\"[^""]*\x27"
+```
 
 ### 9.5 Checklist de verificación tras importar
 
@@ -566,6 +572,7 @@ El buscador, el selector de columnas, el refresco y la exportación viven en la 
 | Los formatos de fecha no cambian | Usa la propiedad `DateFormat` o `dateFormat` por columna en `FieldConfigurations` (requiere `1.0.0.21` o superior). Si aplicas un patrón con hora a una columna de solo fecha verás `00:00` |
 | La moneda sale en USD aunque la configuré | Revisa el nombre de la columna en `FieldConfigurations` (nombre, alias o nombre para mostrar) y que la versión sea `1.0.0.21` o superior |
 | Los decimales no cambian de 2 posiciones | Igual que el caso anterior: `Columna=decimalPlaces:3` y versión `1.0.0.21`+ |
+| La importación falla con `XSD validation failed … noAposStringType … The Pattern constraint failed` | Hay un **apóstrofo** (`'`) en un atributo del manifest (normalmente `display-name-key`). Corregido en `1.0.0.25`; si lo ves en otra versión, quita el `'` del atributo |
 
 ### 11.1 Preguntas frecuentes
 
@@ -614,6 +621,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.25` / `0.0.38` | **Corregido**: los `display-name-key` del combo `DateFormat` ya no llevan apóstrofos (Dataverse usa el tipo `noAposStringType` y la importación fallaba con *XSD validation failed*). Los patrones con comillas (`d de MMMM de yyyy`, `yyyy-MM-ddTHH:mm:ss`) se muestran sin apóstrofos; el patrón real no cambia |
 | `1.0.0.24` / `0.0.37` | Nueva propiedad **`ColumnLabels`**: el programador define el nombre que verá el usuario para cada columna (`nombre=Nombre completo, importe=Importe (€)`). Se aplica al encabezado, al Excel exportado, al placeholder del filtro y al selector de columnas, y la etiqueta sirve como identificador en `InitialColumns`, `FieldConfigurations` y `RowColorRules` |
 | `1.0.0.23` / `0.0.36` | Actualización de **documentación**: ejemplos de configuración listos para copiar (§5.2), checklist de verificación tras importar (§9.5), preguntas frecuentes (§11.1) y corrección de versiones y referencias cruzadas. **Sin cambios funcionales** respecto a `1.0.0.22` |
 | `1.0.0.22` / `0.0.35` | El reporte del paginador muestra el rango visible y la **cantidad filtrada** en lugar del total de la base de datos (*Mostrando 51 a 54 registros · Filtrados: 54*) |
