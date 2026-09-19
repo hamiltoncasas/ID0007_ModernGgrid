@@ -73,6 +73,10 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     /** true mientras se traen todas las filas disponibles en la fuente (al abrir y al refrescar). */
     private deepLoad = false;
     private rowColorStyleElement: HTMLStyleElement | null = null;
+    private mappedRecordsCache: { key: string; records: any[] } | null = null;
+    private filteredRecordsCache: { source: any[]; search: string; records: any[] } | null = null;
+    private matchingRecordsCache: { source: any[]; key: string; records: any[] } | null = null;
+    private numberFormatters = new Map<string, Intl.NumberFormat>();
     /** Tope de la carga de fondo para poder paginar y filtrar en cliente. */
     private static readonly maxAutoLoadedRows = 2000;
     /** Tope de la carga completa (al abrir el control y al pulsar Refrescar). */
@@ -220,17 +224,28 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     }
 
     formatCurrency(value: any, currency: string): string {
-        return new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency,
-        }).format(value);
+        const key = `currency:${currency}`;
+        let formatter = this.numberFormatters.get(key);
+        if (!formatter) {
+            formatter = new Intl.NumberFormat("en-US", { style: "currency", currency });
+            this.numberFormatters.set(key, formatter);
+        }
+
+        return formatter.format(value);
     }
 
     formatDecimal(value: any, decimalPlaces: number): string {
-        return new Intl.NumberFormat("en-US", {
-            minimumFractionDigits: decimalPlaces,
-            maximumFractionDigits: decimalPlaces,
-        }).format(value);
+        const key = `decimal:${decimalPlaces}`;
+        let formatter = this.numberFormatters.get(key);
+        if (!formatter) {
+            formatter = new Intl.NumberFormat("en-US", {
+                minimumFractionDigits: decimalPlaces,
+                maximumFractionDigits: decimalPlaces,
+            });
+            this.numberFormatters.set(key, formatter);
+        }
+
+        return formatter.format(value);
     }
 
     parseConfigurations(configString: string): Record<string, any> {
@@ -291,7 +306,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
       mapRecordsToState(force = false) {
         const { context } = this.props;
         const dataSet = context.parameters.DataSource as ComponentFramework.PropertyTypes.DataSet;
-      console.log("map to state")
         // Parse field configurations
         let fieldConfig: Record<string, any> = {};
         try {
@@ -351,38 +365,53 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return;
         }
 
+        const cacheKey = [
+            this.getRowSignature(dataSet),
+            context.parameters.FieldConfigurations?.raw || "",
+            context.parameters.DateFormat?.raw || "",
+            context.parameters.Language?.raw || "",
+            dataSet.columns.map((column) => `${column.name}:${column.alias}:${column.dataType}`).join("|")
+        ].join(";");
+        if (!force && this.mappedRecordsCache?.key === cacheKey) {
+            return;
+        }
+
+        const columnDescriptors = dataSet.columns.map((col) => ({
+            column: col,
+            config: this.getColumnConfiguration(fieldConfig, col),
+            handler: typeHandlers[col.dataType]
+        }));
+
         const records = dataSet.sortedRecordIds.map((recordId) => {
             const record = dataSet.records[recordId];
             if (!record) {
                 //console.log(`Record ID ${recordId} not found in dataSet.records.`);
                 return null;
             }
-            console.log("preproceed record", record)
             const processedRecord = {
                 id: recordId,
-                ...dataSet.columns.reduce((rec: Record<string, any>, col) => {
+                ...columnDescriptors.reduce((rec: Record<string, any>, descriptor) => {
+                    const col = descriptor.column;
                     const value = record.getValue(col.alias);
                     const colType = col.dataType;
-                    // Configuración propia de esta columna (por nombre, alias o nombre para mostrar).
-                    const columnConfig = this.getColumnConfiguration(fieldConfig, col);
                     //Decimal SingleLine.Text
                     try {
                         // Use the typeHandlers map to process the column type
-                        rec[col.name] = typeHandlers[colType]
-                          ? typeHandlers[colType](value, columnConfig, context)
-                          : value; // Default case for unsupported data types
-                          console.log("Type handler",typeHandlers[colType])
-                      } catch (error) {
+                        rec[col.name] = descriptor.handler
+                            ? descriptor.handler(value, descriptor.config, context)
+                            : value; // Default case for unsupported data types
+                    } catch (error) {
                         console.error(`Error processing column "${col.name}" of type "${colType}":`, error);
                         rec[col.name] = value; // Fallback to raw value
-                      }
-                      return rec;
+                    }
+                    return rec;
                 }, {}),
             };
 
-            console.log('Processed record:', processedRecord);
             return processedRecord;
         }).filter(Boolean);
+
+        this.mappedRecordsCache = { key: cacheKey, records };
 
         //console.log('Final mapped records:', records);
         //console.log('Columns:', dataSet.columns);
@@ -528,10 +557,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
             return true;
         }
-
-        console.log("component udpated")
-        console.log(this.props.context.parameters.DataSource.columns)
-        console.log(this.props.context.parameters.DataSource)
 
         // Si el dataset trae otras filas (página nueva, recarga o fin de carga) hay que repintar.
         if (this.getRowSignature(nextProps.context.parameters.DataSource) !== this.processedRowSignature) {
@@ -714,12 +739,18 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     getFilteredRecords(records: any[]): any[] {
         const searchTerm = this.state.globalFilterValue.trim().toLowerCase();
         if (!searchTerm) return records;
+        if (this.filteredRecordsCache?.source === records && this.filteredRecordsCache.search === searchTerm) {
+            return this.filteredRecordsCache.records;
+        }
 
-        return records.filter((record) =>
+        const filteredRecords = records.filter((record) =>
             this.state.columns.some((column) =>
                 String(record[column.name] ?? '').toLowerCase().includes(searchTerm)
             )
         );
+        this.filteredRecordsCache = { source: records, search: searchTerm, records: filteredRecords };
+
+        return filteredRecords;
     }
 
     onSelectionChange = (e: any) => {
@@ -764,7 +795,16 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
     /** Filas visibles con los filtros activos (búsqueda global y filtros por columna). */
     getRecordsForExport(): any[] {
-        return this.getFilteredRecords(this.state.records).filter((record) => this.matchesColumnFilters(record));
+        const source = this.getFilteredRecords(this.state.records);
+        const key = `${this.state.globalFilterValue}|${JSON.stringify(this.state.filters)}`;
+        if (this.matchingRecordsCache?.source === source && this.matchingRecordsCache.key === key) {
+            return this.matchingRecordsCache.records;
+        }
+
+        const records = source.filter((record) => this.matchesColumnFilters(record));
+        this.matchingRecordsCache = { source, key, records };
+
+        return records;
     }
 
     /** Cantidad de registros que cumplen los filtros activos (buscador global + columnas). */
@@ -1457,6 +1497,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                     currentPageReportTemplate={formatTemplate(strings.pageReport, { filtered: String(this.getFilteredRecordCount()) })}
                     scrollable
                     scrollHeight="flex"
+                    virtualScrollerOptions={{ itemSize: 38 }}
                     rowClassName={(row: any) => this.getRowClassName(row)}
                     className="modern-data-grid-table"
                     style={{ width: '100%', minWidth: '0' }}
