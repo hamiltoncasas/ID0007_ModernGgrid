@@ -96,6 +96,17 @@ Detalles que conviene conocer:
 
 > Si no ves una propiedad en `Mostrar`, búscala en **Avanzado**: nunca se pierde, y ambas apuntan al mismo valor.
 
+**Dónde está cada cosa que necesitas**
+
+| Necesitas… | Dónde está |
+|---|---|
+| Elegir qué columnas se ven | Propiedad **`CamposVisibles`** (*Campos visibles*), en la pestaña **Mostrar**. Se escribe la lista separada por comas (vacío = todas) |
+| Ver el **tipo de dato** de cada columna | En el **selector de columnas** de la barra: cada opción muestra el nombre y su tipo (Texto, Fecha, Fecha y hora, Hora, Número, Moneda, Sí/No, Correo…) |
+| Quitar todas las columnas seleccionadas | Botón **Quitar todas** al pie del panel del selector de columnas (con **Todas** se vuelven a marcar) |
+| Elegir el formato por tipo de dato | `Date Formats`, `Date and Time Formats` y `Time Formats` (fechas) · `Currency Formats`, `Number Formats`, `Decimal Formats` y `Yes No Labels` |
+
+> **Limitación de Power Apps**: el panel de propiedades de un componente de código **no permite dibujar casillas**; por eso la selección de columnas es una propiedad de texto en `Mostrar` (`Campos visibles`) y la lista con casillas vive **dentro del control**, en el selector de columnas de la barra.
+
 ## 5. Propiedades
 
 | Propiedad | Tipo | Valores válidos | Default (manifest) | Si queda vacía | Ejemplo | Descripción |
@@ -356,7 +367,7 @@ Acepta JSON estricto y también el formato de objeto de JavaScript (nombres de p
 - **Coloreado del registro completo** según el valor de una columna.
 - Idiomas **español / inglés** para todos los textos (incluidos los internos de la grilla).
 - **Nombres de columna personalizados**: el programador define con `ColumnLabels` cómo se llama cada columna para el usuario final (encabezado, Excel, filtro y selector).
-- Formato de valores por tipo de dato (moneda, fecha, decimal, sí/no, teléfono, URL), configurable **por columna** y con un **combo global de 36 formatos de fecha** (fecha, fecha y hora y hora).
+- Formato de valores por tipo de dato (moneda, fecha, decimal, sí/no, teléfono, URL), configurable **por columna**: `DateFormats`, `DateTimeFormats` y `TimeFormats` para fechas (cada una se aplica **solo** a columnas de su tipo de dato) y `CurrencyFormats`, `NumberFormats`, `DecimalFormats` y `BooleanLabels` para el resto (ver §8.3 y §8.6 a §8.9).
 - Scroll horizontal y vertical contenido en el tamaño del control (sin desbordar la página).
 
 ## 7. Detalle de funcionalidades
@@ -533,60 +544,88 @@ Esta propiedad se **eliminó** del control en la versión `1.0.0.37` (control `0
 
 Detalle de cada propiedad nueva en §8.6 a §8.9. Si una app todavía tiene texto en `FieldConfigurations`, hay que moverlo a estas propiedades: la propiedad ya no existe en el manifest.
 
-### 8.3 Catálogo de patrones de fecha (referencia)
-Valores que puedes escribir en `DateFormats`, `DateTimeFormats` y `TimeFormats`. La columna izquierda es el **token** (nombre corto que también se acepta) y la derecha el **ejemplo** con el patrón real; puedes escribir el patrón directamente (`dd/MM/yyyy HH:mm`) o cualquier otro patrón de fecha válido.
+### 8.3 Formatos de fecha válidos (patrones)
+El valor que escribes después de `=` en `DateFormats`, `DateTimeFormats` y `TimeFormats` es un **patrón de fecha**. Puedes escribir el patrón tal cual o usar el **token** corto equivalente (misma tabla); también sirve cualquier otro patrón válido.
 
-**Solo fecha (16)**
+**Solo fecha (columnas `DateOnly`) — 16 ejemplos**
 
-| Token | Patrón y ejemplo |
+| Patrón | Resultado | Token equivalente |
+|---|---|---|
+| `dd-MM-yyyy` | `16-09-2026` | `dd-MM-yyyy` |
+| `dd/MM/yyyy` | `16/09/2026` | `dd_MM_yyyy` |
+| `d/M/yyyy` | `16/9/2026` | `d_M_yyyy` |
+| `dd/MM/yy` | `16/09/26` | `dd_MM_yy` |
+| `yyyy-MM-dd` | `2026-09-16` | `yyyy-MM-dd` |
+| `yyyy/MM/dd` | `2026/09/16` | `yyyy_MM_dd` |
+| `dd.MM.yyyy` | `16.09.2026` | `dd.MM.yyyy` |
+| `dd/MMM/yyyy` | `16/sep/2026` | `dd_MMM_yyyy` |
+| `dd/MMM/yy` | `16/sep/26` | `dd_MMM_yy` |
+| `dd/MMMM/yyyy` | `16/septiembre/2026` | `dd_MMMM_yyyy` |
+| `d 'de' MMMM 'de' yyyy` | `16 de septiembre de 2026` | `d_de_MMMM_de_yyyy` |
+| `MMMM d, yyyy` | `septiembre 16, 2026` | `MMMM_d_yyyy` |
+| `MMM yyyy` | `sep 2026` | `MMM_yyyy` |
+| `yyyy` | `2026` | `yyyy` |
+| `EEE dd/MM/yyyy` | `mié 16/09/2026` | `EEE_dd_MM_yyyy` |
+| `EEEE d 'de' MMMM 'de' yyyy` | `miércoles 16 de septiembre de 2026` | `EEEE_d_de_MMMM_de_yyyy` |
+
+**Fecha y hora (columnas `DateAndTime`) — 14 ejemplos**
+
+| Patrón | Resultado | Token equivalente |
+|---|---|---|
+| `dd/MM/yyyy HH:mm` | `16/09/2026 18:30` | `dd_MM_yyyy_HH_mm` |
+| `dd/MM/yyyy HH:mm:ss` | `16/09/2026 18:30:45` | `dd_MM_yyyy_HH_mm_ss` |
+| `dd/MM/yyyy hh:mm a` | `16/09/2026 06:30 p. m.` | `dd_MM_yyyy_hh_mm_a` |
+| `dd/MM/yyyy hh:mm:ss a` | `16/09/2026 06:30:45 p. m.` | `dd_MM_yyyy_hh_mm_ss_a` |
+| `d/M/yyyy HH:mm` | `16/9/2026 18:30` | `d_M_yyyy_HH_mm` |
+| `yyyy-MM-dd HH:mm` | `2026-09-16 18:30` | `yyyy-MM-dd_HH_mm` |
+| `yyyy-MM-dd HH:mm:ss` | `2026-09-16 18:30:45` | `yyyy-MM-dd_HH_mm_ss` |
+| `yyyy-MM-dd'T'HH:mm:ss` | `2026-09-16T18:30:45` | `yyyy-MM-ddTHH_mm_ss` |
+| `dd.MM.yyyy HH:mm` | `16.09.2026 18:30` | `dd.MM.yyyy_HH_mm` |
+| `dd.MM.yyyy HH:mm:ss` | `16.09.2026 18:30:45` | `dd.MM.yyyy_HH_mm_ss` |
+| `dd-MM-yyyy HH:mm` | `16-09-2026 18:30` | `dd-MM-yyyy_HH_mm` |
+| `dd/MMM/yyyy HH:mm` | `16/sep/2026 18:30` | `dd_MMM_yyyy_HH_mm` |
+| `d 'de' MMMM 'de' yyyy HH:mm` | `16 de septiembre de 2026 18:30` | `d_de_MMMM_de_yyyy_HH_mm` |
+| `EEE dd/MM/yyyy HH:mm` | `mié 16/09/2026 18:30` | `EEE_dd_MM_yyyy_HH_mm` |
+
+**Atajos útiles para tus datos** (fecha y hora con la hora sin cero delante, como en el origen: `02/09/2026 8:00`):
+
+| Patrón | Resultado |
 |---|---|
-| `dd-MM-yyyy` | `16-09-2026` |
-| `dd_MM_yyyy` | `16/09/2026` |
-| `d_M_yyyy` | `16/9/2026` |
-| `dd_MM_yy` | `16/09/26` |
-| `yyyy-MM-dd` | `2026-09-16` |
-| `yyyy_MM_dd` | `2026/09/16` |
-| `dd.MM.yyyy` | `16.09.2026` |
-| `dd_MMM_yyyy` | `16/sep/2026` |
-| `dd_MMM_yy` | `16/sep/26` |
-| `dd_MMMM_yyyy` | `16/septiembre/2026` |
-| `d_de_MMMM_de_yyyy` | `16 de septiembre de 2026` |
-| `MMMM_d_yyyy` | `septiembre 16, 2026` |
-| `MMM_yyyy` | `sep 2026` |
-| `yyyy` | `2026` |
-| `EEE_dd_MM_yyyy` | `mié 16/09/2026` |
-| `EEEE_d_de_MMMM_de_yyyy` | `miércoles 16 de septiembre de 2026` |
+| `dd/MM/yyyy H:mm` | `02/09/2026 8:00` |
+| `dd/MM/yyyy H:mm:ss` | `02/09/2026 8:00:00` |
+| `dd/MM/yyyy HH:mm` | `02/09/2026 08:00` |
+| `dd/MM/yyyy` | `02/09/2026` (solo el día, aunque la columna tenga hora) |
 
-**Fecha y hora (14)**
+**Solo hora (columnas `TimeOnly`) — 5 ejemplos**
 
-| Opción | Resultado |
-|---|---|
-| `dd_MM_yyyy_HH_mm` | `16/09/2026 18:30` |
-| `dd_MM_yyyy_HH_mm_ss` | `16/09/2026 18:30:45` |
-| `dd_MM_yyyy_hh_mm_a` | `16/09/2026 06:30 p. m.` |
-| `dd_MM_yyyy_hh_mm_ss_a` | `16/09/2026 06:30:45 p. m.` |
-| `d_M_yyyy_HH_mm` | `16/9/2026 18:30` |
-| `yyyy-MM-dd_HH_mm` | `2026-09-16 18:30` |
-| `yyyy-MM-dd_HH_mm_ss` | `2026-09-16 18:30:45` |
-| `yyyy-MM-ddTHH_mm_ss` | `2026-09-16T18:30:45` |
-| `dd.MM.yyyy_HH_mm` | `16.09.2026 18:30` |
-| `dd.MM.yyyy_HH_mm_ss` | `16.09.2026 18:30:45` |
-| `dd-MM-yyyy_HH_mm` | `16-09-2026 18:30` |
-| `dd_MMM_yyyy_HH_mm` | `16/sep/2026 18:30` |
-| `d_de_MMMM_de_yyyy_HH_mm` | `16 de septiembre de 2026 18:30` |
-| `EEE_dd_MM_yyyy_HH_mm` | `mié 16/09/2026 18:30` |
+| Patrón | Resultado | Token equivalente |
+|---|---|---|
+| `HH:mm` | `18:30` | `HH_mm` |
+| `HH:mm:ss` | `18:30:45` | `HH_mm_ss` |
+| `hh:mm a` | `06:30 p. m.` | `hh_mm_a` |
+| `hh:mm:ss a` | `06:30:45 p. m.` | `hh_mm_ss_a` |
+| `HH:mm:ss.SSS` | `18:30:45.123` | `HH_mm_ss_SSS` |
 
-**Hora (5)**
+**Letras que puedes combinar** (las habituales):
 
-| Opción | Resultado |
-|---|---|
-| `HH_mm` | `18:30` |
-| `HH_mm_ss` | `18:30:45` |
-| `hh_mm_a` | `06:30 p. m.` |
-| `hh_mm_ss_a` | `06:30:45 p. m.` |
-| `HH_mm_ss_SSS` | `18:30:45.123` |
+| Letra | Significa | Ejemplo |
+|---|---|---|
+| `yyyy` / `yy` | año (4 o 2 dígitos) | `2026` / `26` |
+| `MMMM` / `MMM` / `MM` / `M` | mes (nombre completo, abreviado o número) | `septiembre` / `sep` / `09` / `9` |
+| `dd` / `d` | día (con o sin cero) | `02` / `2` |
+| `EEEE` / `EEE` | día de la semana | `miércoles` / `mié` |
+| `HH` / `H` | hora 00-23 (con o sin cero) | `08` / `8` |
+| `hh` / `h` | hora 01-12 (con o sin cero) | `08` / `8` |
+| `mm` / `ss` | minutos / segundos | `05` / `30` |
+| `SSS` | milisegundos | `123` |
+| `a` | AM/PM | `p. m.` |
+| `'texto'` | texto literal entre comillas simples | `d 'de' MMMM 'de' yyyy` |
 
-> Nota: si aplicas un formato con hora a una columna de **solo fecha**, la hora saldrá `00:00` porque el valor no la contiene.
+> **Cuidados importantes**
+> - El **espacio es literal**: `dd/MM/yyyy HH:mm` → `19/09/2026 12:30`, pero `dd/MM/yyyyHH:mm` → `19/09/202612:30`.
+> - El texto literal va **entre comillas simples**: `d 'de' MMMM 'de' yyyy`. Si escribes `de` sin comillas, el formato falla y la columna muestra el valor original.
+> - `MM` es mes y `mm` son minutos: `dd/MM/yyyy HH:mm`.
+> - El formato con hora que pongas en `DateFormats` (columna de solo fecha) se **ignora** por el criterio de tipo de dato; si necesitaras ver la hora, la columna tiene que ser de fecha y hora en Dataverse.
 
 ### 8.4 `RowColorRules`
 Detallado en §7.8. Resumen de la gramática:

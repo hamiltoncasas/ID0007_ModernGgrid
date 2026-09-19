@@ -79,6 +79,8 @@ This is a **dataset** control: its data comes from the `DataSource` data set pro
 
 > **Pagination vs virtual scrolling:** set `DisplayPagination = true` to page through the loaded rows (only the current page is rendered) or `false` to scroll the whole loaded list with virtual scrolling. Do not enable both at the same time: PrimeReact cannot combine them.
 
+> **Date formats:** `DateFormats`, `DateTimeFormats` and `TimeFormats` take a **pattern** (`column=dd/MM/yyyy HH:mm`) or a short token (`column=dd_MM_yyyy_HH_mm`) and each one applies **only** to columns of its data type (date-only, date-and-time, time-only); a column listed under another property is ignored. The value is a literal, so keep the space: `dd/MM/yyyy HH:mm`. Full list of valid patterns and letters: [DOCUMENTATION.md §8.3](DOCUMENTATION.md).
+
 ## Performance and diagnostics
 
 Large datasets are handled with incremental row mapping (only new rows are formatted), per-row cached search text, stable render inputs for PrimeReact and a 200 ms search debounce (instant with `Enter` or when leaving the field).
