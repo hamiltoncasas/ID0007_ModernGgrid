@@ -24,6 +24,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - `ModernDataGrid/helpers/Views.ts`: `Views` property (views/reports): tolerant JSON parsing, filter grammar (`=`, `!=`, `%…%`, `>`, `>=`, `<`, `<=`), column/title resolution and the exported file name/sheet.
 - `ModernDataGrid/helpers/ColumnTypes.ts`: translated name of each column data type (shown in the column selector).
 - `ModernDataGrid/helpers/ColumnLabels.ts`: display-name overrides for column headers (`ColumnLabels`).
+- `ModernDataGrid/helpers/ColumnFilters.ts`: compiles the PrimeReact filter model once per change (record field, `and`/`or` operator and `FilterService` predicate) so the Excel export never rebuilds it per row.
 - `ModernDataGrid/components/ExcelIcon.tsx`: inline SVG icon for the Excel button.
 - `Modern-Data-Grid.pcfproj`: PCF MSBuild project.
 - `Solution/ModernDataGrid/ModernDataGrid.cdsproj`: Dataverse solution project.
@@ -37,7 +38,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.37`
+- Solution version: `1.0.0.38`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -93,7 +94,7 @@ With `filterDisplay="menu"` PrimeReact writes the typed value into `constraints[
 
 `helpers/ExcelExport.ts` builds the workbook without adding dependencies: it writes `[Content_Types].xml`, `_rels/.rels`, `xl/workbook.xml`, `xl/_rels/workbook.xml.rels`, `xl/styles.xml` and `xl/worksheets/sheet1.xml` (inline strings, bold header) into a ZIP container whose entries are deflated with the browser `CompressionStream` (`deflate-raw`) and stored uncompressed when that API is unavailable.
 
-`DataGrid.getRecordsForExport()` reproduces what the grid shows: the existing global search plus the per-column constraints, evaluated with `FilterService` from `primereact/api` so the match modes stay identical to PrimeReact. When a constraint carries **no `matchMode`**, the fallback must be the column's own mode (`FilterMatchMode.CONTAINS`, as declared in the `Column`), never `STARTS_WITH`: PrimeReact filters those constraints with `contains`, so any other default makes the file disagree with the grid (that bug exported 1 row while the grid showed 23). The export contains every row loaded in the control that matches the filters, formatted with the same `FieldConfigurations`, using only the currently visible columns (the same `getVisibleColumns()` the grid renders, so the two lists cannot diverge). `exportToExcel()` logs `[ModernDataGrid] exportando a Excel { columnas, filas, filasCargadas }`.
+`DataGrid.getRecordsForExport()` reproduces what the grid shows: the existing global search plus the per-column constraints, compiled **once per filter change** by `helpers/ColumnFilters.ts` and evaluated with `FilterService` from `primereact/api` so the match modes stay identical to PrimeReact. When a constraint carries **no `matchMode`**, the fallback must be the column's own mode (`FilterMatchMode.CONTAINS`, as declared in the `Column`), never `STARTS_WITH`: PrimeReact filters those constraints with `contains`, so any other default makes the file disagree with the grid (that bug exported 1 row while the grid showed 23). A constraint with an unknown `matchMode` must not filter (it resolves to an always-true predicate). The export contains every row loaded in the control that matches the filters, formatted with the same per-type format properties, using only the currently visible columns (the same `getVisibleColumns()` the grid renders, so the two lists cannot diverge). `exportToExcel()` logs `[ModernDataGrid] exportando a Excel { columnas, filas, filasCargadas }`.
 
 ## Localization
 
@@ -224,7 +225,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.37`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.38`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -237,7 +238,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.50`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.51`, is separate from the four-part Dataverse solution version.
 
 Date formats are configured in exactly three properties (`DateFormats`, `DateTimeFormats`, `TimeFormats`) and each one applies **only** to columns whose data type matches it: `buildColumnFormat()` resolves the pattern with `findDateAssignment()` and ignores (with a one-off console warning) a column listed in a property of another type, so a mistake never changes another column's format. There is no global date-format property (the `DateFormat` enum was removed in `0.0.50`).
 
@@ -247,7 +248,7 @@ Keep the date range filter working the way PrimeReact expects it: the row value 
 
 Views (`Views` property) must stay additive: applying one sets the visible columns, the view titles, the view filters, the sorting and the page, and clears the manual filters; manual search/column filters applied afterwards are combined with the view filters. Keep the view parsing tolerant (strict JSON or JavaScript-object style with `;` and unquoted keys) and never include real customer data in the documentation examples.
 
-Performance work (incremental row mapping, memoized render inputs, search debounce and the optional `window.__mdgPerf` diagnostics) must never change manifest properties or user-visible behavior: keep the dataset property, the export, the pagination and the filters as they are, and keep `shouldComponentUpdate` free of side effects (the dataset `refresh()` is consumed in `componentDidUpdate`).
+Performance work (incremental row mapping, memoized render inputs, compiled column filters, the column header/label memos, search debounce and the optional `window.__mdgPerf` diagnostics) must never change manifest properties or user-visible behavior: keep the dataset property, the export, the pagination and the filters as they are, and keep `shouldComponentUpdate` free of side effects (the dataset `refresh()` is consumed in `componentDidUpdate`). Reuse `helpers/ColumnFilters.ts` (`compileColumnFilters()` + `matchesCompiledFilters()` + `hasActiveColumnFilters()`) whenever the filter model is evaluated over rows: never rebuild the model inside the row loop and never use `JSON.stringify(filters)` as a cache key (use the memoized `filtersSignature()`). Keep the column header/label memos identity-based (columns array reference + the raw property text). Keep `package.json` free of dependencies that are no longer imported (`lodash.isequal` and `flatted` were dropped in `0.0.51`); `obj/` and `out/` stay git-ignored.
 
 Never enable `virtualScrollerOptions` and the paginator at the same time: the DataTable slices the virtual scroller viewport again with `dataToRender`, so every page beyond the viewport renders empty. Virtualization is enabled only when `DisplayPagination` is false.
 

@@ -31,19 +31,6 @@ export function formatDate(
     }
   }
 
-export function getAvailableDatePatterns(context: ComponentFramework.Context<IInputs>) {
-    const userSettings = context.userSettings.dateFormattingInfo;
-  
-    return [
-      userSettings.shortDatePattern,
-      userSettings.longDatePattern,
-      userSettings.fullDateTimePattern,
-      userSettings.sortableDateTimePattern,
-      userSettings.universalSortableDateTimePattern,
-      userSettings.yearMonthPattern,
-    ];
-  }
-
 /** Normaliza texto para comparar sin distinguir mayúsculas, acentos ni espacios extremos. */
 export function normalizeText(value: string): string {
     return value

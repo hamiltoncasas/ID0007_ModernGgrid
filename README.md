@@ -83,7 +83,7 @@ This is a **dataset** control: its data comes from the `DataSource` data set pro
 
 ## Performance and diagnostics
 
-Large datasets are handled with incremental row mapping (only new rows are formatted), per-row cached search text, stable render inputs for PrimeReact and a 200 ms search debounce (instant with `Enter` or when leaving the field).
+Large datasets are handled with incremental row mapping (only new rows are formatted), per-row cached search text, stable render inputs for PrimeReact and a 200 ms search debounce (instant with `Enter` or when leaving the field). The Excel export walks the rows with the column filters **compiled once** per filter change (`helpers/ColumnFilters.ts`), and the column headers/labels are memoized by column identity.
 
 Optional diagnostics, disabled by default:
 
@@ -94,4 +94,4 @@ window.__mdgPerfReport();   // console.table with the accumulated summary
 
 Details, counters and reference measurements: [DOCUMENTATION.md §9.6](DOCUMENTATION.md).
 
-**Current version:** solution `1.0.0.37` · control `0.0.50`.
+**Current version:** solution `1.0.0.38` · control `0.0.51`.

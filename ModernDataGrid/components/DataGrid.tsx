@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-import { FilterMatchMode, FilterOperator, FilterService } from 'primereact/api';
+import { FilterMatchMode, FilterOperator } from 'primereact/api';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { InputText } from 'primereact/inputtext';
@@ -28,6 +28,12 @@ import {
 import { resolveColumnLabels } from '../helpers/ColumnLabels';
 import { describeColumnType } from '../helpers/ColumnTypes';
 import {
+    compileColumnFilters,
+    CompiledColumnFilter,
+    hasActiveColumnFilters,
+    matchesCompiledFilters as evaluateCompiledFilters
+} from '../helpers/ColumnFilters';
+import {
     buildViewFileName,
     compileView,
     CompiledView,
@@ -35,10 +41,16 @@ import {
     parseViews,
     ViewColumn,
     GridView,
-    matchesViewFilter,
-    ViewFilterOperator
+    matchesViewFilter
 } from '../helpers/Views';
-import { applyPrimeReactLanguage, formatTemplate, getStrings, GridStrings, Language } from '../helpers/Localization';
+import {
+    applyPrimeReactLanguage,
+    DEFAULT_LANGUAGE,
+    formatTemplate,
+    getStrings,
+    GridStrings,
+    Language
+} from '../helpers/Localization';
 import { CompiledRowColors, compileRowColors } from '../helpers/RowColoring';
 import { ExcelIcon } from './ExcelIcon';
 import 'primereact/resources/themes/saga-blue/theme.css';
@@ -212,7 +224,6 @@ interface DataGridState {
     pendingPage: number | null;
     /** Filas por página elegidas por el usuario (null = las del dataset). */
     pageSizeOverride: number | null;
-    totalPages: number;
     /** Columnas que el usuario final decidió ver; null = todas las disponibles. */
     selectedColumns: string[] | null;
     /** Texto que se está escribiendo en el buscador; el filtrado efectivo se aplica con retardo. */
@@ -228,10 +239,10 @@ interface DataGridState {
 }
 
 class DataGrid extends Component<DataGridProps, DataGridState> {
-    private filterMap: Map<string, any> = new Map();
     private intervalId: NodeJS.Timeout | null = null;
     private appliedLanguage: Language | null = null;
-    private columnLabelsCache: { key: string; labels: Record<string, string> } | null = null;
+    private columnLabelsCache: { raw: string; source: any[]; labels: Record<string, string> } | null = null;
+    private columnHeaderKeyCache: { columns: any[]; raw: string; activeView: string; key: string } | null = null;
     private rowColorsCache: { key: string; compiled: CompiledRowColors } | null = null;
     private autoLoadFrom = -1;
     /** true cuando la fuente ya se consultó y no entregó más filas. */
@@ -309,6 +320,10 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     } | null = null;
     /** Columnas del dataset para resolver las vistas (memoizadas por identidad y etiquetas). */
     private viewColumnsCache: { source: any[]; labelsKey: string; columns: ViewColumn[] } | null = null;
+    /** Filtro de columna resuelto, memoizado por firma del modelo de filtros. */
+    private compiledFiltersCache: { signature: string; filters: CompiledColumnFilter[] } | null = null;
+    /** Encabezados de columna memoizados por la estructura que los determina. */
+    private columnHeaderCache: { key: string; headers: Record<string, string> } | null = null;
     /** Tipo de dato y campo de filtro por columna (memoizados por identidad de columnas). */
     private columnMetaCache: {
         source: any[];
@@ -352,7 +367,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             records: [],
             selectedColumns:
                 defaultView && defaultView.columns.length ? defaultView.columns.slice() : this.getInitialSelection(),
-            totalPages: 1,
             selectedRecords: [],
             selectedRecordIds: [],
             filters: props.context.parameters.DataSource.columns.reduce((acc: any, col: any) => {
@@ -600,14 +614,12 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }, 400);
     }
 
-    checkAndStartInterval() {
-        (window as any).context = this.props.context;
-        const paging = this.context?.parameters.DataSource.paging;
+    /** Arranca o detiene el refresco periódico según la bandera `needsRefresh` del estado. */
+    checkAndStartInterval(): void {
         if (this.state.needsRefresh) {
             if (!this.intervalId) {
-                //console.log('Starting refresh interval...');
                 this.intervalId = setInterval(() => {
-                    //console.log("Pinging for new records...");
+                    // El mapeo sale de inmediato si la firma de filas no cambió.
                     this.mapRecordsToState();
                 }, 5000);
             }
@@ -1489,33 +1501,80 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         return names;
     }
 
-    /** Etiquetas personalizadas de columnas (propiedad ColumnLabels), resueltas por columna. */
+    /** Etiquetas personalizadas memoizadas por texto de la propiedad y columnas del dataset. */
     getColumnLabels(): Record<string, string> {
         const raw = this.props.context.parameters.ColumnLabels?.raw || '';
-        const columns = (this.props.context.parameters.DataSource.columns || []).map((column) => ({
+        const source = this.getBaseColumns();
+
+        // Comparación por identidad (igual que el resto de cachés): evita recorrer las
+        // columnas cada vez que se pinta un encabezado.
+        if (this.columnLabelsCache && this.columnLabelsCache.raw === raw && this.columnLabelsCache.source === source) {
+            return this.columnLabelsCache.labels;
+        }
+
+        const columns = source.map((column) => ({
             name: column.name,
             alias: column.alias,
             displayName: column.displayName
         }));
-        const key = `${raw}|${columns.map((column) => column.name).join(',')}`;
+        const labels = resolveColumnLabels(raw, columns);
+        this.columnLabelsCache = { raw, source, labels };
 
-        if (!this.columnLabelsCache || this.columnLabelsCache.key !== key) {
-            this.columnLabelsCache = { key, labels: resolveColumnLabels(raw, columns) };
-        }
-
-        return this.columnLabelsCache.labels;
+        return labels;
     }
 
-    /** Nombre que se muestra para una columna: el de la vista, el personalizado o el del dataset. */
-    getColumnHeader(column: { name: string; displayName?: string }): string {
-        const viewTitles = this.getCompiledView()?.titles;
+    /**
+     * Clave de los encabezados de columna: columnas, etiquetas personalizadas y vista activa.
+     * Se valida por identidad y textos para no reconstruir la firma en cada columna.
+     */
+    getColumnHeaderKey(): string {
+        const columns = this.getBaseColumns();
+        const raw = this.props.context.parameters.ColumnLabels?.raw || '';
+        const activeView = this.state.activeView || '';
 
-        return (
+        if (
+            this.columnHeaderKeyCache &&
+            this.columnHeaderKeyCache.columns === columns &&
+            this.columnHeaderKeyCache.raw === raw &&
+            this.columnHeaderKeyCache.activeView === activeView
+        ) {
+            return this.columnHeaderKeyCache.key;
+        }
+
+        const key = `${this.getColumnsSchemaKey(columns)}|${raw}|${activeView}`;
+        this.columnHeaderKeyCache = { columns, raw, activeView, key };
+
+        return key;
+    }
+
+    /**
+     * Nombre que se muestra para una columna: el de la vista, el personalizado o el del
+     * dataset. Memoizado por columna: las celdas de las columnas del selector y de la
+     * cabecera del rango de fechas lo piden muchas veces por render.
+     */
+    getColumnHeader(column: { name: string; displayName?: string }): string {
+        const key = this.getColumnHeaderKey();
+
+        if (!this.columnHeaderCache || this.columnHeaderCache.key !== key) {
+            this.columnHeaderCache = { key, headers: {} };
+        }
+
+        const cached = this.columnHeaderCache.headers[column.name];
+
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const viewTitles = this.getCompiledView()?.titles;
+        const header =
             (viewTitles && viewTitles[column.name]) ||
             this.getColumnLabels()[column.name] ||
             column.displayName ||
-            column.name
-        );
+            column.name;
+
+        this.columnHeaderCache.headers[column.name] = header;
+
+        return header;
     }
 
     /** Columnas del dataset disponibles para el control (siempre todas). */
@@ -1898,15 +1957,21 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }, { ...currentFilters });
     }
 
-    /** Filas visibles con los filtros activos (búsqueda global y filtros por columna). */
+    /** Filas visibles con los filtros activos (búsqueda global, vista y filtros por columna). */
     getRecordsForExport(): any[] {
         const source = this.getFilteredRecords(this.state.records);
-        const key = `${this.state.globalFilterValue}|${JSON.stringify(this.state.filters)}`;
+        // La firma de los filtros está memoizada por identidad: no se serializa el modelo en
+        // cada render (el contador del pie pasa por aquí varias veces).
+        const key = `${this.state.globalFilterValue}|${this.filtersSignature(this.state.filters)}`;
+
         if (this.matchingRecordsCache?.source === source && this.matchingRecordsCache.key === key) {
             return this.matchingRecordsCache.records;
         }
 
-        const records = source.filter((record) => this.matchesColumnFilters(record));
+        const compiledFilters = this.getCompiledColumnFilters();
+        const records = compiledFilters.length
+            ? source.filter((record) => this.matchesCompiledFilters(record, compiledFilters))
+            : source;
         this.matchingRecordsCache = { source, key, records };
 
         return records;
@@ -1917,38 +1982,29 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         return this.getRecordsForExport().length;
     }
 
-    matchesColumnFilters(record: any): boolean {
+    /**
+     * Filtros de columna ya resueltos: campo del registro, operador, restricciones activas y
+     * su predicado. Se calculan una sola vez por cambio del modelo (memoizado por su firma),
+     * de modo que el recorrido de filas de la exportación solo evalúa predicados y no
+     * reconstruye el modelo ni busca el modo de coincidencia en cada fila.
+     */
+    getCompiledColumnFilters(): CompiledColumnFilter[] {
         const filters = this.state.filters || {};
+        const signature = this.filtersSignature(filters);
 
-        return Object.keys(filters)
-            .filter((field) => field !== 'global')
-            .every((field) => {
-                const filterModel = filters[field];
-                if (!filterModel) return true;
+        if (this.compiledFiltersCache && this.compiledFiltersCache.signature === signature) {
+            return this.compiledFiltersCache.filters;
+        }
 
-                const constraints = filterModel.constraints ? filterModel.constraints : [filterModel];
-                const activeConstraints = constraints.filter(
-                    (constraint: any) =>
-                        constraint && constraint.value !== null && constraint.value !== undefined && constraint.value !== ''
-                );
-                if (!activeConstraints.length) return true;
+        const compiled = compileColumnFilters(filters, (field) => this.resolveFilterRecordField(field));
+        this.compiledFiltersCache = { signature, filters: compiled };
 
-                const results = activeConstraints.map((constraint: any) => this.evaluateConstraint(record, field, constraint));
-                return filterModel.operator === FilterOperator.OR ? results.some(Boolean) : results.every(Boolean);
-            });
+        return compiled;
     }
 
-    evaluateConstraint(record: any, field: string, constraint: any): boolean {
-        // Se usa el mismo motor de filtros que PrimeReact. Cuando el modelo no trae
-        // matchMode se aplica el de la columna (CONTAINS en el DataTable), no otro:
-        // si no, la exportación no coincidiría con las filas que se ven en la grilla.
-        // En las columnas de fecha se evalúa la fecha real (ms), igual que el DataTable,
-        // porque el valor visible de la celda está formateado.
-        const matchMode = constraint.matchMode || FilterMatchMode.CONTAINS;
-        const filterPredicate = (FilterService as any).filters?.[matchMode];
-        if (typeof filterPredicate !== 'function') return true;
-
-        return filterPredicate(this.resolveRecordField(record, this.resolveFilterRecordField(field)), constraint.value);
+    /** true si la fila cumple todos los filtros de columna activos (ya resueltos). */
+    matchesCompiledFilters(record: any, compiledFilters: CompiledColumnFilter[]): boolean {
+        return evaluateCompiledFilters(record, compiledFilters, (row, field) => this.resolveRecordField(row, field));
     }
 
     /**
@@ -1983,11 +2039,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             typeof dataSet.getTargetEntityType === 'function' ? dataSet.getTargetEntityType() : undefined;
 
         return (headerText || targetEntityType || 'ModernDataGrid').toString();
-    }
-
-    /** Marca de tiempo de la exportación (nombre del archivo estándar). */
-    getExportFileStamp(): string {
-        return this.getExportStampTokens().stamp;
     }
 
     /** Tokens de fecha y hora que puede usar la plantilla `archivo` de una vista. */
@@ -2035,7 +2086,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
     /** Idioma configurado en la propiedad Language del manifest. */
     getLanguage(): Language {
-        return this.props.context.parameters.Language?.raw === 'es' ? 'es' : 'en';
+        return this.props.context.parameters.Language?.raw === 'es' ? 'es' : DEFAULT_LANGUAGE;
     }
 
     /** Textos del control (buscador, botones, mensajes y exportación). */
@@ -2251,33 +2302,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             </div>
         );
     }
-    getFieldValue(col: ComponentFramework.PropertyHelper.DataSetApi.Column): string {
-        return col.alias || col.name;
-    }
-
-    getRecordsFromContext(): any[] {
-        const { context } = this.props;
-        if (context.parameters.DataSource && !context.parameters.DataSource.loading) {
-            const dataSet = context.parameters.DataSource as ComponentFramework.PropertyTypes.DataSet;
-            ////console.log('DataSet:', dataSet);
-
-            const records = dataSet.sortedRecordIds.map(recordId => {
-                const record = dataSet.records[recordId];
-                return {
-                    id: recordId,
-                    ...dataSet.columns.reduce((rec: Record<string, any>, col) => {
-                        rec[col.name] = record.getValue(col.alias);
-                        //console.log(rec)
-                        return rec;
-                    }, {})
-                };
-            });
-            ////console.log('Mapped Records:', records);
-            return records;
-        }
-        return [];
-    }
-
     /**
      * Revalida el dataset y repinta. Varias peticiones seguidas (montaje, cambio de columnas,
      * filtros…) se agrupan en una sola: el mapeo lee el dataset cuando se ejecuta, así que no se
@@ -2613,22 +2637,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return true;
         }
 
-        const filters = this.state.filters || {};
-
-        return Object.keys(filters).some((field) => {
-            const filterModel = filters[field];
-
-            if (!filterModel) {
-                return false;
-            }
-
-            const constraints = filterModel.constraints ? filterModel.constraints : [filterModel];
-
-            return constraints.some(
-                (constraint: any) =>
-                    constraint && constraint.value !== null && constraint.value !== undefined && constraint.value !== ''
-            );
-        });
+        return hasActiveColumnFilters(this.state.filters);
     }
 
     render() {

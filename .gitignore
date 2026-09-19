@@ -6,6 +6,10 @@
 # generated directory
 **/generated
 
+# PCF build outputs
+/obj
+/out
+
 
 # MSBuild Binary and Structured Log
 *.binlog

@@ -70,11 +70,6 @@ export function resolveDateFormat(token?: string | null): string | undefined {
     return option ? option.pattern : undefined;
 }
 
-/** Tokens válidos; los usa la prueba que compara el manifest con este catálogo. */
-export function getDateFormatTokens(): string[] {
-    return DATE_FORMAT_OPTIONS.map((option) => option.token);
-}
-
 /**
  * Patrón date-fns a partir del texto configurado en la app: acepta un token del
  * catálogo (`dd_MM_yyyy_HH_mm`) o directamente un patrón (`dd/MM/yyyy HH:mm`,
