@@ -2060,6 +2060,12 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         const allowFiltering = context.parameters.AllowFiltering?.raw ?? false;
         const rowsPerPageOptions = this.getRowsPerPageOptions();
         const visibleColumns = this.getVisibleColumns();
+        // PrimeReact no combina paginador con scroll virtual: el DataTable vuelve a recortar con
+        // `dataToRender` el trozo que ya recortó el VirtualScroller, así que cualquier página
+        // posterior al viewport (~40 filas) quedaba vacía y parpadeaba al recalcularlo.
+        // Con el paginador activo se renderizan solo las filas de la página (sin scroll virtual) y,
+        // cuando el paginador está desactivado, el scroll virtual sigue virtualizando todo el listado.
+        const virtualizationEnabled = !displayPagination;
 
         this.perf.renders++;
         const rowsPaintedLastRender = this.rowsPaintedThisRender;
@@ -2116,7 +2122,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                     currentPageReportTemplate={this.getPageReportTemplate()}
                     scrollable
                     scrollHeight="flex"
-                    virtualScrollerOptions={VIRTUAL_SCROLLER_OPTIONS}
+                    virtualScrollerOptions={virtualizationEnabled ? VIRTUAL_SCROLLER_OPTIONS : undefined}
                     rowClassName={this.rowClassName}
                     className="modern-data-grid-table"
                     style={TABLE_STYLE}
