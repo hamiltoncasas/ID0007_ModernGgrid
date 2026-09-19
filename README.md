@@ -7,6 +7,9 @@
 - **Works Seamlessly with Any Data Source**
 - **Includes Built-In Filtering, Sorting, and Keyword Search**
 - **Supports Pagination** (Ensure "Default Rows" is set above 0 for it to display)
+- **Date range filter** on date and date-and-time columns (both endpoints included)
+- **Views / reports combo** next to the column selector: columns, titles, filters, sorting and the exported file/sheet defined per view
+- **Per-column formats split by concern**: currency, date, date and time, time, numbers, decimals and Yes/No labels
 
 For any issues or feedback, please use the "Issues" tab at the top of the page.
 
@@ -61,7 +64,15 @@ This is a **dataset** control: its data comes from the `DataSource` data set pro
 | `AllowSorting` | Two options | `true` / `false` | `false` | `true` |
 | `AllowFiltering` | Two options | `true` / `false` | `false` | `true` |
 | `IsEnabled` | Two options | `true` / `false` | `true` | `true` |
-| `FieldConfigurations` | Text area | `column=key:value\|key:value, …` with keys `currency`, `dateFormat`, `decimalPlaces`, `trueLabel`, `falseLabel` | sample value | `Amount=currency:EUR, Flag=trueLabel:Yes\|falseLabel:No` |
+| `FieldConfigurations` | Text area | `column=key:value\|key:value, …` with keys `currency`, `dateFormat`, `decimalPlaces`, `trueLabel`, `falseLabel` (legacy; the dedicated format properties below take precedence) | sample value | `Amount=currency:EUR, Flag=trueLabel:Yes\|falseLabel:No` |
+| `CurrencyFormats` | Text area | `column=ISO[\|locale:xx-XX\|\|decimals:n], …` | empty (`USD`, `en-US`) | `Amount=EUR, Price=USD\|locale:en-US` |
+| `DateFormats` | Text area | `column=pattern, …` (date-only columns) | empty (`yyyy-MM-dd`) | `Due=dd/MM/yyyy` |
+| `DateTimeFormats` | Text area | `column=pattern, …` (date and time columns) | empty (`yyyy-MM-dd HH:mm:ss`) | `Created=dd/MM/yyyy HH:mm` |
+| `TimeFormats` | Text area | `column=pattern, …` (time-only columns) | empty (`HH:mm:ss`) | `Start=HH:mm` |
+| `NumberFormats` | Text area | `column=[decimals][\|grouping:true\|false][\|locale:xx-XX], …` | empty (2 decimals) | `Quantity=3\|grouping:false` |
+| `DecimalFormats` | Text area | `column=decimals, …` | empty (2 decimals) | `Quantity=3` |
+| `BooleanLabels` | Text area | `column=True\|False, …` | empty (`Yes`/`No`) | `Active=Yes\|No` |
+| `Views` | Text area (JSON) | object (or array) of views | empty (no combo) | `{"active":{"nombre":"Active","columnas":"name;status","filtros":"status = Active"}}` |
 | `DateFormat` | Enum (36 options) | `default`, `dd_MM_yyyy`, `yyyy-MM-dd`, `dd_MM_yyyy_HH_mm`, `HH_mm`, … | `default` | `dd_MM_yyyy_HH_mm` |
 | `InitialColumns` | Text area | comma separated names, aliases or display names | empty (all columns) | `name, Amount, Date` |
 | `ColumnLabels` | Text area | `column=Label, otherColumn=Other label` | empty (data set names) | `amount=Amount (€)` |
@@ -83,4 +94,4 @@ window.__mdgPerfReport();   // console.table with the accumulated summary
 
 Details, counters and reference measurements: [DOCUMENTATION.md §9.6](DOCUMENTATION.md).
 
-**Current version:** solution `1.0.0.33` · control `0.0.46`.
+**Current version:** solution `1.0.0.34` · control `0.0.47`.

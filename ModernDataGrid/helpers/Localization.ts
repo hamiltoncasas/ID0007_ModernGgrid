@@ -26,6 +26,16 @@ export interface GridStrings {
     pageReport: string;
     /** Plantilla del placeholder de cada filtro de columna; admite {column}. */
     searchByColumn: string;
+    /** Etiqueta del combo de vistas/informes (aria-label y tooltip). */
+    viewsSelector: string;
+    /** Texto del combo cuando no hay una vista elegida. */
+    viewsPlaceholder: string;
+    /** Opción del combo que quita el filtro de vista. */
+    noView: string;
+    /** Etiqueta del selector de rango de fechas de una columna de fecha. */
+    dateRangeFilter: string;
+    /** Formato con el que se pintan los días del rango (formato de PrimeReact). */
+    datePickerFormat: string;
     /** Nombre de la hoja del libro exportado. */
     exportSheetName: string;
 }
@@ -41,6 +51,11 @@ const ENGLISH_STRINGS: GridStrings = {
     emptyMessage: 'No records found.',
     pageReport: 'Showing {first} to {last} entries · Filtered: {filtered}',
     searchByColumn: 'Search by {column}',
+    viewsSelector: 'Filter by view (report)',
+    viewsPlaceholder: 'View',
+    noView: 'All records',
+    dateRangeFilter: 'Filter by date range',
+    datePickerFormat: 'mm/dd/yy',
     exportSheetName: 'Data'
 };
 
@@ -55,6 +70,11 @@ const SPANISH_STRINGS: GridStrings = {
     emptyMessage: 'No se encontraron registros.',
     pageReport: 'Mostrando {first} a {last} registros · Filtrados: {filtered}',
     searchByColumn: 'Buscar en {column}',
+    viewsSelector: 'Filtrar por vista (informe)',
+    viewsPlaceholder: 'Vista',
+    noView: 'Todos los registros',
+    dateRangeFilter: 'Filtrar por rango de fechas',
+    datePickerFormat: 'dd/mm/yy',
     exportSheetName: 'Datos'
 };
 

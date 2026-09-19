@@ -19,7 +19,9 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - `ModernDataGrid/helpers/ExcelExport.ts`: dependency-free XLSX writer (the OPC/ZIP container is built by hand).
 - `ModernDataGrid/helpers/RowColoring.ts`: parser and compiler of the row color rules.
 - `ModernDataGrid/helpers/Localization.ts`: `en`/`es` strings and the Spanish PrimeReact locale.
-- `ModernDataGrid/helpers/DateFormat.ts`: catalog of the `DateFormat` property (token -> date-fns pattern). Keep it in sync with the manifest enum.
+- `ModernDataGrid/helpers/DateFormat.ts`: catalog of the `DateFormat` property (token -> date-fns pattern) plus `resolveDatePattern()` (token or literal pattern). Keep it in sync with the manifest enum.
+- `ModernDataGrid/helpers/FieldFormats.ts`: per-column formats (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) merged with the legacy `FieldConfigurations`.
+- `ModernDataGrid/helpers/Views.ts`: `Views` property (views/reports): tolerant JSON parsing, filter grammar (`=`, `!=`, `%…%`, `>`, `>=`, `<`, `<=`), column/title resolution and the exported file name/sheet.
 - `ModernDataGrid/helpers/ColumnLabels.ts`: display-name overrides for column headers (`ColumnLabels`).
 - `ModernDataGrid/components/ExcelIcon.tsx`: inline SVG icon for the Excel button.
 - `Modern-Data-Grid.pcfproj`: PCF MSBuild project.
@@ -34,7 +36,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.33`
+- Solution version: `1.0.0.34`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -52,6 +54,9 @@ The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `
 - Internal horizontal and vertical scrolling constrained to the PCF host dimensions.
 - Managed and unmanaged solution packaging.
 - Field formatting through `FieldConfigurations`.
+- Per-column formats split by concern (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`), all of which take precedence over `FieldConfigurations`.
+- Date and date-and-time columns filter through an inline **range calendar** (`between`, both endpoints included) backed by the hidden milliseconds field.
+- `Views` property: a combo next to the column selector applies ready-made reports (columns, titles, filters, sorting, exported file and sheet).
 - Per-column filters use the `menu` display: the funnel icon opens a panel with the search input and `Contains` as the default match mode.
 - Column selector in the toolbar: the end user can show or hide any column available in the dataset. `InitialColumns` still defines the starting set and stays respected.
 - Excel export button in the toolbar: writes a real `.xlsx` (generated in `helpers/ExcelExport.ts`) with the rows currently matching the global search and the per-column filters, using the visible columns only.
@@ -216,7 +221,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.33`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.34`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -229,7 +234,11 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.46`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.47`, is separate from the four-part Dataverse solution version.
+
+Keep the date range filter working the way PrimeReact expects it: the row value used by the filter is the **filter model key**, so date columns must use the hidden milliseconds field (`column + '__mdgdatevalue'`) as both the `filterField` and the key of the entry in the `filters` state, with `filterMatchMode = between` and the inline range calendar as `filterElement`. The same value must be resolved by the Excel export (`resolveFilterRecordField`) so the file matches the grid. Never key a date filter by the display field: the filter menu writes into `filters[filterField]`.
+
+Views (`Views` property) must stay additive: applying one sets the visible columns, the view titles, the view filters, the sorting and the page, and clears the manual filters; manual search/column filters applied afterwards are combined with the view filters. Keep the view parsing tolerant (strict JSON or JavaScript-object style with `;` and unquoted keys) and never include real customer data in the documentation examples.
 
 Performance work (incremental row mapping, memoized render inputs, search debounce and the optional `window.__mdgPerf` diagnostics) must never change manifest properties or user-visible behavior: keep the dataset property, the export, the pagination and the filters as they are, and keep `shouldComponentUpdate` free of side effects (the dataset `refresh()` is consumed in `componentDidUpdate`).
 

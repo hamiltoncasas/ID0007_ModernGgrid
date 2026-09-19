@@ -75,3 +75,16 @@ export function resolveDateFormat(token?: string | null): string | undefined {
 export function getDateFormatTokens(): string[] {
     return DATE_FORMAT_OPTIONS.map((option) => option.token);
 }
+
+/**
+ * Patrón date-fns a partir del texto configurado en la app: acepta un token del
+ * catálogo (`dd_MM_yyyy_HH_mm`) o directamente un patrón (`dd/MM/yyyy HH:mm`,
+ * `d 'de' MMMM 'de' yyyy`). Devuelve `undefined` si no hay texto.
+ */
+export function resolveDatePattern(value?: string | null): string | undefined {
+    if (!value) {
+        return undefined;
+    }
+
+    return resolveDateFormat(value) || value.trim() || undefined;
+}

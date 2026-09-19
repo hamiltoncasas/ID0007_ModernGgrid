@@ -7,14 +7,37 @@ import { IconField } from 'primereact/iconfield';
 import { InputIcon } from 'primereact/inputicon';
 import { Button } from 'primereact/button';
 import { MultiSelect } from 'primereact/multiselect';
+import { Dropdown } from 'primereact/dropdown';
+import { Calendar } from 'primereact/calendar';
 import { RefreshIcon } from 'primereact/icons/refresh';
 import { SearchIcon } from 'primereact/icons/search';
 import { FilterSlashIcon } from 'primereact/icons/filterslash';
+import { endOfDay, startOfDay } from 'date-fns';
 import { IInputs } from "../generated/ManifestTypes";
-import { formatDate, getAvailableDatePatterns, normalizeText } from '../helpers/Utils';
+import { formatDate, getAvailableDatePatterns, normalizeText, toEpochMs } from '../helpers/Utils';
 import { exportRowsToExcel } from '../helpers/ExcelExport';
-import { resolveDateFormat } from '../helpers/DateFormat';
+import { resolveDatePattern } from '../helpers/DateFormat';
+import {
+    buildColumnFormat,
+    ColumnFormat,
+    formatPropertySignature,
+    FormatPropertyValues,
+    isDateDataType,
+    ParsedFormatProperties,
+    parseFormatProperties
+} from '../helpers/FieldFormats';
 import { resolveColumnLabels } from '../helpers/ColumnLabels';
+import {
+    buildViewFileName,
+    compileView,
+    CompiledView,
+    NO_VIEW_KEY,
+    parseViews,
+    ViewColumn,
+    GridView,
+    matchesViewFilter,
+    ViewFilterOperator
+} from '../helpers/Views';
 import { applyPrimeReactLanguage, formatTemplate, getStrings, GridStrings, Language } from '../helpers/Localization';
 import { CompiledRowColors, compileRowColors } from '../helpers/RowColoring';
 import { ExcelIcon } from './ExcelIcon';
@@ -39,6 +62,67 @@ const SELECTION_COLUMN_HEADER_STYLE: React.CSSProperties = { width: '3rem' };
 const BASE_ROWS_PER_PAGE = [5, 15, 25];
 /** Separador del texto buscable de una fila (no puede escribirse en el buscador de una línea). */
 const SEARCH_TEXT_SEPARATOR = '\n';
+/** Sufijo del campo oculto donde se guarda la fecha real (milisegundos) de una columna de fecha. */
+const DATE_VALUE_SUFFIX = '__mdgdatevalue';
+/** Valor del combo de vistas que quita el filtro de vista. */
+const NO_VIEW_OPTION = '__mdg_all__';
+
+interface DateRangeFilterProps {
+    /** Rango activo en milisegundos (vacío, un extremo o los dos). */
+    value: any;
+    /** Escribe el rango en el modelo de filtros de la tabla. */
+    onChange: (range: number[] | null) => void;
+    /** Formato de los días del calendario, según el idioma del control. */
+    dateFormat: string;
+    /** Texto accesible del selector. */
+    label: string;
+}
+
+/**
+ * Selector de rango de fechas del filtro de una columna de fecha o de fecha y hora.
+ * Se muestra dentro del panel del embudo como calendario en línea: al elegir el
+ * primer día queda marcado y al elegir el segundo se aplica el rango (los dos días
+ * incluidos). El valor viaja al modelo de filtros como `[inicio, fin]` en
+ * milisegundos y PrimeReact lo compara con `between`.
+ */
+class DateRangeFilter extends Component<DateRangeFilterProps> {
+    onRangeChange = (event: any) => {
+        const dates: Array<Date | null> = Array.isArray(event?.value) ? event.value : [];
+        const start = dates[0] ? startOfDay(dates[0]).getTime() : null;
+        const end = dates[1] ? endOfDay(dates[1]).getTime() : null;
+
+        if (start === null) {
+            this.props.onChange(null);
+
+            return;
+        }
+
+        // Con un solo extremo el filtro queda inactivo hasta que se elija el otro.
+        this.props.onChange(end === null ? [start] : [start, end]);
+    };
+
+    render(): React.ReactElement {
+        const value = Array.isArray(this.props.value)
+            ? (this.props.value as any[])
+                  .filter((item) => typeof item === 'number')
+                  .map((item: number) => new Date(item))
+            : null;
+        const options = {
+            value,
+            onChange: this.onRangeChange,
+            selectionMode: 'range',
+            dateFormat: this.props.dateFormat,
+            inline: true,
+            showButtonBar: true,
+            showOtherMonths: true,
+            selectOtherMonths: true,
+            panelClassName: 'modern-data-grid-date-filter',
+            'aria-label': this.props.label
+        };
+
+        return <Calendar {...(options as any)} />;
+    }
+}
 
 interface SearchBoxProps {
     /** Valor aplicado por el control (permite reiniciar el texto al limpiar filtros o recargar). */
@@ -135,6 +219,12 @@ interface DataGridState {
     searchText: string;
     /** Se incrementa cuando el control pide vaciar el buscador (sincroniza el texto del SearchBox). */
     searchResetToken: number;
+    /** Vista (informe) activa del combo; cadena vacía = sin vista. */
+    activeView: string;
+    /** Campo por el que ordena la tabla (controlado para poder aplicar el orden de la vista). */
+    sortField: string | null;
+    /** 1 ascendente, -1 descendente. */
+    sortOrder: 1 | -1 | null;
 }
 
 class DataGrid extends Component<DataGridProps, DataGridState> {
@@ -158,7 +248,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     private deepLoad = false;
     private rowColorStyleElement: HTMLStyleElement | null = null;
     private mappedRecordsCache: { key: string; records: any[] } | null = null;
-    private filteredRecordsCache: { source: any[]; search: string; records: any[] } | null = null;
+    private filteredRecordsCache: { source: any[]; search: string; view: string; records: any[] } | null = null;
     private matchingRecordsCache: { source: any[]; key: string; records: any[] } | null = null;
     private numberFormatters = new Map<string, Intl.NumberFormat>();
     /** Fila ya formateada, ligada a la referencia del record del dataset que la originó. */
@@ -199,6 +289,27 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     private filtersSignatureCache: { source: any; signature: string } | null = null;
     /** Clave de las reglas de color memoizada (texto + columnas del dataset). */
     private rowColorsKeyCache: { raw: string; source: any[]; key: string } | null = null;
+    /** Propiedades de formato analizadas (memoizadas por la firma de sus textos). */
+    private formatPropertiesCache: { signature: string; properties: ParsedFormatProperties } | null = null;
+    /** Vistas de la propiedad `Views` (memoizadas por su texto). */
+    private viewsCache: { raw: string; views: GridView[] } | null = null;
+    /** Vista activa ya compilada (memoizada por vista y por columnas del dataset). */
+    private compiledViewCache: { key: string; columnsKey: string; compiled: CompiledView | null } | null = null;
+    /** Opciones del combo de vistas (memoizadas por texto, idioma y columnas). */
+    private viewOptionsCache: {
+        key: string;
+        options: Array<{ label: string; value: string; description: string }>;
+    } | null = null;
+    /** Columnas del dataset para resolver las vistas (memoizadas por identidad y etiquetas). */
+    private viewColumnsCache: { source: any[]; labelsKey: string; columns: ViewColumn[] } | null = null;
+    /** Tipo de dato y campo de filtro por columna (memoizados por identidad de columnas). */
+    private columnMetaCache: {
+        source: any[];
+        dataTypes: { [name: string]: string };
+        filterFields: { [name: string]: string };
+    } | null = null;
+    /** Componentes del filtro de rango de fechas estables por columna. */
+    private columnFilterElementCache = new Map<string, (options: any) => any>();
     /** Retardo del buscador global: equilibra respuesta inmediata y trabajo por pulsación. */
     private static readonly searchDebounceMs = 200;
     private searchDebounceTimeout: NodeJS.Timeout | null = null;
@@ -229,17 +340,16 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     declare context: React.ContextType<typeof DataGrid.contextType>;
     constructor(props: DataGridProps) {
         super(props);
+        const defaultView = this.getDefaultView();
         this.state = {
             records: [],
-            selectedColumns: null,
+            selectedColumns: defaultView && defaultView.columns.length ? defaultView.columns.slice() : null,
             totalPages: 1,
             selectedRecords: [],
             selectedRecordIds: [],
             filters: props.context.parameters.DataSource.columns.reduce((acc: any, col: any) => {
-                acc[col.name] = {
-                    operator: FilterOperator.AND,
-                    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }]
-                };
+                acc[this.getFilterFieldName(col.name)] = this.createColumnFilter(col);
+
                 return acc;
             }, {}),
             globalFilterValue: '',
@@ -253,6 +363,9 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             currentPage: 1,
             pendingPage: null,
             pageSizeOverride: null,
+            activeView: defaultView ? defaultView.key : NO_VIEW_KEY,
+            sortField: defaultView && defaultView.sortField ? defaultView.sortField : null,
+            sortOrder: defaultView && defaultView.sortField ? defaultView.sortOrder : null
         };
 
         this.applyLanguage();
@@ -378,7 +491,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         context: ComponentFramework.Context<IInputs>
     ): string {
         return [
-            context.parameters.FieldConfigurations?.raw || "",
+            this.getFormatSignature(context),
             context.parameters.DateFormat?.raw || "",
             context.parameters.Language?.raw || "",
             this.getColumnsSchemaKey(dataSet.columns)
@@ -518,120 +631,398 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.setState({ previousParameters: parameterValues });
     }
 
-    formatCurrency(value: any, currency: string): string {
-        const key = `currency:${currency}`;
+    /**
+     * Formatea un importe con la moneda de la columna (`CurrencyFormats`). El idioma
+     * regional se puede ajustar con la opción `locale` y los decimales con `decimals`.
+     */
+    formatCurrency(value: any, currency: string, config?: ColumnFormat): string {
+        const locale = config?.currencyLocale || "en-US";
+        const decimals = config?.currencyDecimals;
+        const key = `currency:${locale}:${currency}:${decimals === undefined ? '' : decimals}`;
         let formatter = this.numberFormatters.get(key);
+
         if (!formatter) {
-            formatter = new Intl.NumberFormat("en-US", { style: "currency", currency });
-            this.numberFormatters.set(key, formatter);
-        }
+            const options: Intl.NumberFormatOptions = { style: "currency", currency };
 
-        return formatter.format(value);
-    }
-
-    formatDecimal(value: any, decimalPlaces: number): string {
-        const key = `decimal:${decimalPlaces}`;
-        let formatter = this.numberFormatters.get(key);
-        if (!formatter) {
-            formatter = new Intl.NumberFormat("en-US", {
-                minimumFractionDigits: decimalPlaces,
-                maximumFractionDigits: decimalPlaces,
-            });
-            this.numberFormatters.set(key, formatter);
-        }
-
-        return formatter.format(value);
-    }
-
-    parseConfigurations(configString: string): Record<string, any> {
-        const configs: Record<string, any> = {};
-      
-        try {
-          // Split by comma for each field
-          const fields = configString.split(",");
-          fields.forEach((field) => {
-            const [fieldName, config] = field.split("=");
-            if (fieldName && config) {
-              // Split configurations by "|" and ":" for key-value pairs
-              const configObject = config.split("|").reduce((acc, pair) => {
-                const [key, value] = pair.split(":");
-                if (key && value) acc[key.trim()] = value.trim();
-                return acc;
-              }, {} as Record<string, any>);
-              configs[fieldName.trim()] = configObject;
+            if (decimals !== undefined) {
+                options.minimumFractionDigits = decimals;
+                options.maximumFractionDigits = decimals;
             }
-          });
-        } catch (error) {
-          console.error("Error parsing FieldConfigurations:", error);
-        }
-      
-        return configs;
-      }
-      
-     
 
+            try {
+                formatter = new Intl.NumberFormat(locale, options);
+            } catch (error) {
+                console.warn(`Formatos: moneda o idioma no válidos (${currency}, ${locale}).`, error);
+
+                return String(value);
+            }
+
+            this.numberFormatters.set(key, formatter);
+        }
+
+        return formatter.format(value);
+    }
 
     /**
-     * Bloque de configuración que corresponde a una columna, buscándola por
-     * nombre, alias o nombre para mostrar (sin distinguir mayúsculas ni acentos).
+     * Formatea un número con los decimales configurados (`DecimalFormats` o
+     * `NumberFormats`) y, si se indica, el separador de miles y el idioma regional.
      */
-    getColumnConfiguration(
-        configurations: Record<string, any>,
-        column: ComponentFramework.PropertyHelper.DataSetApi.Column
-    ): any {
-        const keys = Object.keys(configurations || {});
-        if (!keys.length) {
-            return undefined;
+    formatDecimal(value: any, decimalPlaces?: number, config?: ColumnFormat): string {
+        const decimals = decimalPlaces === undefined ? 2 : decimalPlaces;
+        const locale = config?.numberLocale || "en-US";
+        const grouping = config?.numberGrouping;
+        const key = `decimal:${locale}:${decimals}:${grouping === undefined ? '' : grouping ? 1 : 0}`;
+        let formatter = this.numberFormatters.get(key);
+
+        if (!formatter) {
+            const options: Intl.NumberFormatOptions = {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals,
+            };
+
+            if (grouping !== undefined) {
+                options.useGrouping = grouping;
+            }
+
+            try {
+                formatter = new Intl.NumberFormat(locale, options);
+            } catch (error) {
+                console.warn(`Formatos: idioma regional no válido (${locale}).`, error);
+
+                return String(value);
+            }
+
+            this.numberFormatters.set(key, formatter);
         }
 
-        const labels = this.getColumnLabels();
-        const identifiers = [column.name, column.alias, column.displayName, labels[column.name]]
-            .filter(Boolean)
-            .map((identifier) => normalizeText(String(identifier)));
-        const key = keys.find((candidate) => identifiers.indexOf(normalizeText(candidate)) !== -1);
-
-        return key ? configurations[key] : undefined;
+        return formatter.format(value);
     }
 
     /** Patrón de fecha global de la propiedad DateFormat (undefined = predeterminado por tipo). */
     getGlobalDateFormat(): string | undefined {
-        return resolveDateFormat(this.props.context.parameters.DateFormat?.raw);
+        return resolveDatePattern(this.props.context.parameters.DateFormat?.raw);
+    }
+
+    /** Modelo de filtro inicial de una columna: rango de fechas en las columnas de fecha. */
+    createColumnFilter(column: { name: string; dataType?: string }): any {
+        return {
+            operator: FilterOperator.AND,
+            constraints: [
+                {
+                    value: null,
+                    matchMode: isDateDataType(column.dataType) ? FilterMatchMode.BETWEEN : FilterMatchMode.CONTAINS
+                }
+            ]
+        };
+    }
+
+    /** Tipo de dato y campo de filtro de cada columna (memoizado por identidad de columnas). */
+    getColumnMeta(): { dataTypes: { [name: string]: string }; filterFields: { [name: string]: string } } {
+        const columns = this.props.context.parameters.DataSource.columns || [];
+
+        if (!this.columnMetaCache || this.columnMetaCache.source !== columns) {
+            const dataTypes: { [name: string]: string } = {};
+            const filterFields: { [name: string]: string } = {};
+
+            columns.forEach((column) => {
+                dataTypes[column.name] = column.dataType;
+                filterFields[column.name] = isDateDataType(column.dataType)
+                    ? column.name + DATE_VALUE_SUFFIX
+                    : column.name;
+            });
+
+            this.columnMetaCache = { source: columns, dataTypes, filterFields };
+        }
+
+        return this.columnMetaCache;
+    }
+
+    /** Campo del registro sobre el que se filtra una columna (la fecha real en las de fecha). */
+    getFilterFieldName(columnName: string): string {
+        return this.getColumnMeta().filterFields[columnName] || columnName;
+    }
+
+    /** Tipo de dato de una columna del dataset. */
+    getColumnDataType(columnName: string): string | undefined {
+        return this.getColumnMeta().dataTypes[columnName];
+    }
+
+    /** Texto actual de las propiedades de formato (dedicadas y heredada). */
+    getFormatPropertyValues(context: ComponentFramework.Context<IInputs>): FormatPropertyValues {
+        const parameters = context.parameters;
+
+        return {
+            fieldConfigurations: parameters.FieldConfigurations?.raw,
+            currencyFormats: parameters.CurrencyFormats?.raw,
+            dateFormats: parameters.DateFormats?.raw,
+            dateTimeFormats: parameters.DateTimeFormats?.raw,
+            timeFormats: parameters.TimeFormats?.raw,
+            numberFormats: parameters.NumberFormats?.raw,
+            decimalFormats: parameters.DecimalFormats?.raw,
+            booleanLabels: parameters.BooleanLabels?.raw
+        };
+    }
+
+    /** Firma de los formatos: cambia solo cuando hay que volver a formatear las filas. */
+    getFormatSignature(context: ComponentFramework.Context<IInputs>): string {
+        return formatPropertySignature(this.getFormatPropertyValues(context));
+    }
+
+    /** Propiedades de formato ya analizadas (una vez por cambio de texto). */
+    getParsedFormatProperties(): ParsedFormatProperties {
+        const signature = this.getFormatSignature(this.props.context);
+
+        if (this.formatPropertiesCache?.signature === signature) {
+            return this.formatPropertiesCache.properties;
+        }
+
+        const properties = parseFormatProperties(this.getFormatPropertyValues(this.props.context));
+        this.formatPropertiesCache = { signature, properties };
+
+        return properties;
+    }
+
+    /** Vistas definidas en la propiedad `Views` (memoizadas por su texto). */
+    getViews(): GridView[] {
+        const raw = this.props.context.parameters.Views?.raw || '';
+
+        if (this.viewsCache?.raw === raw) {
+            return this.viewsCache.views;
+        }
+
+        const views = parseViews(raw);
+        this.viewsCache = { raw, views };
+
+        return views;
+    }
+
+    /** Columnas del dataset contra las que se resuelven los identificadores de las vistas. */
+    getViewColumns(): ViewColumn[] {
+        const columns = this.props.context.parameters.DataSource.columns || [];
+        const labelsKey = this.props.context.parameters.ColumnLabels?.raw || '';
+
+        if (
+            this.viewColumnsCache &&
+            this.viewColumnsCache.source === columns &&
+            this.viewColumnsCache.labelsKey === labelsKey
+        ) {
+            return this.viewColumnsCache.columns;
+        }
+
+        const labels = this.getColumnLabels();
+        const viewColumns = columns.map((column) => ({
+            name: column.name,
+            alias: column.alias,
+            displayName: column.displayName,
+            label: labels[column.name]
+        }));
+        this.viewColumnsCache = { source: columns, labelsKey, columns: viewColumns };
+
+        return viewColumns;
+    }
+
+    /** Vista activa compilada (identificadores ya traducidos al dataset). */
+    getCompiledView(key?: string): CompiledView | null {
+        const activeKey = key === undefined ? this.state.activeView : key;
+
+        if (!activeKey) {
+            return null;
+        }
+
+        const view = this.getViews().find((candidate) => candidate.key === activeKey);
+
+        if (!view) {
+            return null;
+        }
+
+        const columns = this.props.context.parameters.DataSource.columns || [];
+        const columnsKey = `${this.getColumnsSchemaKey(columns)}|${
+            this.props.context.parameters.ColumnLabels?.raw || ''
+        }`;
+
+        if (
+            this.compiledViewCache &&
+            this.compiledViewCache.key === activeKey &&
+            this.compiledViewCache.columnsKey === columnsKey
+        ) {
+            return this.compiledViewCache.compiled;
+        }
+
+        const compiled = compileView(view, this.getViewColumns());
+
+        // El orden de una columna de fecha se hace sobre la fecha real (milisegundos) para
+        // que sea cronológico y no alfabético.
+        if (compiled.sortField && isDateDataType(this.getColumnDataType(compiled.sortField))) {
+            compiled.sortField += DATE_VALUE_SUFFIX;
+        }
+
+        this.compiledViewCache = { key: activeKey, columnsKey, compiled };
+
+        return compiled;
+    }
+
+    /** Vista marcada como predeterminada en el JSON (`predeterminada: true`). */
+    getDefaultView(): CompiledView | null {
+        const view = this.getViews().find((candidate) => candidate.predeterminada);
+
+        return view ? this.getCompiledView(view.key) : null;
+    }
+
+    /** Filtros en blanco: en las columnas de fecha la clave es el campo con la fecha real (ms). */
+    createEmptyFilters(columns: ComponentFramework.PropertyHelper.DataSetApi.Column[]): any {
+        return (columns || []).reduce((acc: any, column: any) => {
+            acc[this.getFilterFieldName(column.name)] = this.createColumnFilter(column);
+
+            return acc;
+        }, {});
+    }
+
+    /** Opciones del combo de vistas: la primera quita el filtro de vista. */
+    getViewOptions(): Array<{ label: string; value: string; description: string }> {
+        const views = this.getViews();
+
+        if (!views.length) {
+            return [];
+        }
+
+        const strings = this.getStrings();
+        const key = `${this.props.context.parameters.Views?.raw || ''}|${this.getLanguage()}`;
+
+        if (this.viewOptionsCache?.key === key) {
+            return this.viewOptionsCache.options;
+        }
+
+        const options = views.map((view) => ({
+            label: view.nombre,
+            value: view.key,
+            description: view.descripcion
+        }));
+        options.unshift({ label: strings.noView, value: NO_VIEW_OPTION, description: '' });
+        this.viewOptionsCache = { key, options };
+
+        return options;
+    }
+
+    /** Cambio de vista en el combo. */
+    onViewChange = (event: any) => {
+        const value = event?.value === undefined || event?.value === null ? NO_VIEW_KEY : String(event.value);
+
+        this.applyView(value === NO_VIEW_OPTION ? NO_VIEW_KEY : value);
+    };
+
+    /**
+     * Aplica (o quita) una vista: columnas visibles, títulos, filtros, orden y
+     * vuelta a la primera página. Al cambiar de vista también se limpian el
+     * buscador y los filtros de columna, para que el informe se vea tal cual.
+     */
+    applyView(key: string): void {
+        if (this.state.activeView === key) {
+            return;
+        }
+
+        const view = key ? this.getCompiledView(key) : null;
+
+        this.autoLoadFrom = -1;
+        this.clearPendingTimeout();
+        this.clearSearchDebounce();
+        this.setState((prevState) => ({
+            activeView: key,
+            selectedColumns: view && view.columns.length ? view.columns.slice() : null,
+            sortField: view && view.sortField ? view.sortField : null,
+            sortOrder: view && view.sortField ? view.sortOrder : null,
+            filters: this.createEmptyFilters(this.props.context.parameters.DataSource.columns),
+            globalFilterValue: '',
+            searchText: '',
+            searchResetToken: prevState.searchResetToken + 1,
+            gridEpoch: prevState.gridEpoch + 1,
+            currentPage: 1,
+            pendingPage: null
+        }));
+    }
+
+    /** Opción del combo de vistas: nombre y descripción del informe. */
+    renderViewOption = (option: any) => (
+        <div className="modern-data-grid-view-option">
+            <span className="modern-data-grid-view-option-name">{option.label}</span>
+            {!!option.description && (
+                <small className="modern-data-grid-view-option-description">{option.description}</small>
+            )}
+        </div>
+    );
+
+    /** Vista elegida en el combo. */
+    renderSelectedView = (option: any) =>
+        option && option.label ? <span>{option.label}</span> : <span>{this.getStrings().viewsPlaceholder}</span>;
+
+    /**
+     * Elemento de filtro de una columna de fecha: un calendario de rango en línea.
+     * Se memoiza por columna para que PrimeReact reciba siempre la misma función.
+     */
+    getColumnFilterElement(columnName: string): (options: any) => any {
+        let element = this.columnFilterElementCache.get(columnName);
+
+        if (!element) {
+            element = (options: any) => {
+                const strings = this.getStrings();
+                const column = (this.props.context.parameters.DataSource.columns || []).find(
+                    (candidate) => candidate.name === columnName
+                );
+                const label = column
+                    ? formatTemplate(strings.dateRangeFilter, { column: this.getColumnHeader(column) })
+                    : strings.dateRangeFilter;
+
+                return (
+                    <DateRangeFilter
+                        value={options?.value}
+                        onChange={(range) => options?.filterCallback && options.filterCallback(range)}
+                        dateFormat={strings.datePickerFormat}
+                        label={label}
+                    />
+                );
+            };
+            this.columnFilterElementCache.set(columnName, element);
+        }
+
+        return element;
     }
 
       mapRecordsToState(force = false) {
         const { context } = this.props;
         const dataSet = context.parameters.DataSource as ComponentFramework.PropertyTypes.DataSet;
-        // Parse field configurations
-        let fieldConfig: Record<string, any> = {};
-        try {
-          const rawConfig = context.parameters.FieldConfigurations?.raw || "{}";
-          fieldConfig = this.parseConfigurations(rawConfig);
-        } catch (error) {
-          console.error("Invalid JSON in FieldConfigurations:", context.parameters.FieldConfigurations?.raw, error);
-        }
+        // Formatos por columna: propiedades dedicadas + compatibilidad con FieldConfigurations.
+        const formatProperties = this.getParsedFormatProperties();
+        const labels = this.getColumnLabels();
+        const globalDateFormat = this.getGlobalDateFormat();
 
-        const typeHandlers: Record<string, (value: any, config: any, context: ComponentFramework.Context<IInputs>) => any> = {
-            "Currency": (value, config) => this.formatCurrency(value, config?.currency || "USD"),
-            "DateAndTime.DateAndTime": (value, config, context) =>
+        const typeHandlers: Record<string, (value: any, config: ColumnFormat, context: ComponentFramework.Context<IInputs>) => any> = {
+            "Currency": (value, config) => this.formatCurrency(value, config.currency || "USD", config),
+            "DateAndTime.DateAndTime": (value, config, ctx) =>
               formatDate(
                 new Date(value),
-                config?.dateFormat || this.getGlobalDateFormat() || "yyyy-MM-dd HH:mm:ss",
-                context
+                config.datePattern || globalDateFormat || "yyyy-MM-dd HH:mm:ss",
+                ctx
               ),
-            "DateAndTime.DateOnly": (value, config, context) =>
+            "DateAndTime.DateOnly": (value, config, ctx) =>
               formatDate(
                 new Date(value),
-                config?.dateFormat || this.getGlobalDateFormat() || "yyyy-MM-dd",
-                context
+                config.datePattern || globalDateFormat || "yyyy-MM-dd",
+                ctx
               ),
-            "Decimal": (value, config) => this.formatDecimal(value, parseInt(config?.decimalPlaces) || 2),
-            "TwoOptions": (value, config) => (value ? config?.trueLabel || "Yes" : config?.falseLabel || "No"),
+            "DateAndTime.TimeOnly": (value, config, ctx) =>
+              formatDate(
+                new Date(value),
+                config.datePattern || globalDateFormat || "HH:mm:ss",
+                ctx
+              ),
+            "Decimal": (value, config) => this.formatDecimal(value, config.decimalPlaces, config),
+            "TwoOptions": (value, config) => (value ? config.trueLabel || "Yes" : config.falseLabel || "No"),
             "SingleLine.Email": (value) => `mailto:${value}`,
             "SingleLine.Phone": (value) => `tel:${value}`,
             "SingleLine.URL": (value) => `<a href="${value}">${value}</a>`,
             "Object": (value) => JSON.stringify(value),
             // Add more as needed
           };
+        const dateFallbackHandler = typeHandlers["DateAndTime.DateAndTime"];
 
         //const dateFormat = context.parameters.DateFormat?.raw || availablePatterns[0] || "yyyy-MM-dd";
         //const fieldConfigs = JSON.parse(context.parameters.FieldConfigurations?.raw || "{}");
@@ -688,8 +1079,13 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
         const columnDescriptors = dataSet.columns.map((col) => ({
             column: col,
-            config: this.getColumnConfiguration(fieldConfig, col),
-            handler: typeHandlers[col.dataType]
+            format: buildColumnFormat(
+                col.dataType,
+                { name: col.name, alias: col.alias, displayName: col.displayName, label: labels[col.name] },
+                formatProperties
+            ),
+            dateColumn: isDateDataType(col.dataType),
+            handler: typeHandlers[col.dataType] || (isDateDataType(col.dataType) ? dateFallbackHandler : undefined)
         }));
 
         const started = this.perfNow();
@@ -725,11 +1121,17 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                 try {
                     // Use the typeHandlers map to process the column type
                     processedRecord[col.name] = descriptor.handler
-                        ? descriptor.handler(value, descriptor.config, context)
+                        ? descriptor.handler(value, descriptor.format, context)
                         : value; // Default case for unsupported data types
                 } catch (error) {
                     console.error(`Error processing column "${col.name}" of type "${colType}":`, error);
                     processedRecord[col.name] = value; // Fallback to raw value
+                }
+
+                // Fecha real de la fila (oculta): permite filtrar por rango de fechas aunque
+                // la celda muestre el valor ya formateado.
+                if (descriptor.dateColumn) {
+                    processedRecord[col.name + DATE_VALUE_SUFFIX] = toEpochMs(value);
                 }
             }
 
@@ -784,10 +1186,9 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
     updateFilters(columns: ComponentFramework.PropertyHelper.DataSetApi.Column[], previousFilters: any) {
         return columns.reduce((acc: any, col: any) => {
-            acc[col.name] = previousFilters[col.name] || {
-                operator: FilterOperator.AND,
-                constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }]
-            };
+            const key = this.getFilterFieldName(col.name);
+
+            acc[key] = previousFilters[key] || this.createColumnFilter(col);
             return acc;
         }, {});
     }
@@ -815,6 +1216,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         // Si había una página pendiente y ya hay filas para mostrarla, se mueve la vista.
         this.applyPendingPage();
 
+        // Si la vista elegida ya no existe (cambió la propiedad Views), se quita.
+        if (this.state.activeView && !this.getViews().some((view) => view.key === this.state.activeView)) {
+            this.setState({ activeView: NO_VIEW_KEY, selectedColumns: null, sortField: null, sortOrder: null });
+        }
+
         const dataSourceChanged = prevProps.context.parameters.DataSource !== this.props.context.parameters.DataSource;
         // Comparación elemento a elemento (10.000 ids ≈ 0,1 ms) en vez de dos JSON.stringify.
         const sortedRecordIdsChanged = !this.sameStringList(
@@ -829,13 +1235,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }
 
         const filtersChanged = this.filtersSignature(prevState.filters) !== this.filtersSignature(this.state.filters);
-        const prevFieldConfigurations = prevProps.context.parameters.FieldConfigurations?.raw || "";
-        const currentFieldConfigurations = this.props.context.parameters.FieldConfigurations?.raw || "";
-
-        const fieldConfigurationsChanged = prevFieldConfigurations !== currentFieldConfigurations;
+        const formatsChanged =
+            this.getFormatSignature(prevProps.context) !== this.getFormatSignature(this.props.context);
 
         const structuralChange =
-            dataSourceChanged || sortedRecordIdsChanged || filtersChanged || fieldConfigurationsChanged;
+            dataSourceChanged || sortedRecordIdsChanged || filtersChanged || formatsChanged;
 
         if (structuralChange || rowsChanged) {
             this.mapRecordsToState();
@@ -926,7 +1330,10 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             this.state.selectedRecordIds !== nextState.selectedRecordIds ||
             this.state.selectedRecords !== nextState.selectedRecords ||
             this.state.globalFilterValue !== nextState.globalFilterValue ||
-            this.state.searchText !== nextState.searchText
+            this.state.searchText !== nextState.searchText ||
+            this.state.activeView !== nextState.activeView ||
+            this.state.sortField !== nextState.sortField ||
+            this.state.sortOrder !== nextState.sortOrder
         ) {
             return true;
         }
@@ -1101,9 +1508,16 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         return this.columnLabelsCache.labels;
     }
 
-    /** Nombre que se muestra para una columna: etiqueta personalizada o nombre del dataset. */
+    /** Nombre que se muestra para una columna: el de la vista, el personalizado o el del dataset. */
     getColumnHeader(column: { name: string; displayName?: string }): string {
-        return this.getColumnLabels()[column.name] || column.displayName || column.name;
+        const viewTitles = this.getCompiledView()?.titles;
+
+        return (
+            (viewTitles && viewTitles[column.name]) ||
+            this.getColumnLabels()[column.name] ||
+            column.displayName ||
+            column.name
+        );
     }
 
     /** Columnas disponibles para el control (respeta InitialColumns cuando está definido). */
@@ -1269,21 +1683,64 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
     getFilteredRecords(records: any[]): any[] {
         const searchTerm = this.state.globalFilterValue.trim().toLowerCase();
-        if (!searchTerm) return records;
-        if (this.filteredRecordsCache?.source === records && this.filteredRecordsCache.search === searchTerm) {
+        const view = this.getCompiledView();
+        const viewKey = view ? view.key : NO_VIEW_KEY;
+        const hasViewFilters = !!view && view.filters.length > 0;
+
+        if (!searchTerm && !hasViewFilters) {
+            return records;
+        }
+
+        if (
+            this.filteredRecordsCache?.source === records &&
+            this.filteredRecordsCache.search === searchTerm &&
+            this.filteredRecordsCache.view === viewKey
+        ) {
             return this.filteredRecordsCache.records;
         }
 
         const started = this.perfNow();
         // El texto buscable de cada fila se calcula una sola vez (WeakMap) y se reutiliza entre
         // pulsaciones: la búsqueda pasa de O(filas x columnas) a O(filas).
-        const filteredRecords = records.filter((record) => this.getRecordSearchText(record).indexOf(searchTerm) !== -1);
-        this.filteredRecordsCache = { source: records, search: searchTerm, records: filteredRecords };
+        const filteredRecords = records.filter(
+            (record) =>
+                this.recordMatchesView(record, view) &&
+                (!searchTerm || this.getRecordSearchText(record).indexOf(searchTerm) !== -1)
+        );
+        this.filteredRecordsCache = {
+            source: records,
+            search: searchTerm,
+            view: viewKey,
+            records: filteredRecords
+        };
 
         this.perf.filterPasses++;
         this.perf.filterMs += this.perfSince(started);
 
         return filteredRecords;
+    }
+
+    /** true si la fila cumple todas las reglas de la vista activa. */
+    recordMatchesView(record: Record<string, any>, view: CompiledView | null): boolean {
+        if (!view || !view.filters.length) {
+            return true;
+        }
+
+        const { dataTypes } = this.getColumnMeta();
+
+        return view.filters.every((filter) => {
+            const dateColumn = isDateDataType(dataTypes[filter.name]);
+
+            return matchesViewFilter(
+                {
+                    displayValue: record[filter.name],
+                    dateValue: dateColumn ? record[filter.name + DATE_VALUE_SUFFIX] : undefined,
+                    dateColumn
+                },
+                filter.operator,
+                filter.value
+            );
+        });
     }
 
     /** Texto buscable (minúsculas) de una fila: se conserva mientras la fila siga siendo la misma. */
@@ -1334,21 +1791,34 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.setState({ filters: event.filters });
     };
 
+    /**
+     * Ordenamiento de la tabla. Se controla desde el estado para poder aplicar el
+     * orden de la vista (`ordenarPor` y `ordenDescendente`); al ordenar se vuelve a
+     * la primera página, igual que antes.
+     */
+    onSort = (event: any) => {
+        this.setState({
+            sortField: event?.sortField ?? null,
+            sortOrder: event?.sortOrder ?? null,
+            currentPage: 1,
+            pendingPage: null
+        });
+    };
+
     /** Estado de filtros completo: garantiza un modelo por cada columna del dataset. */
     getFiltersForTable(): any {
         const columns = this.props.context.parameters.DataSource.columns || [];
         const currentFilters = this.state.filters || {};
 
-        if (!columns.some((column) => !currentFilters[column.name])) {
+        if (!columns.some((column) => !currentFilters[this.getFilterFieldName(column.name)])) {
             return currentFilters;
         }
 
         return columns.reduce((acc: any, column) => {
-            if (!acc[column.name]) {
-                acc[column.name] = {
-                    operator: FilterOperator.AND,
-                    constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }]
-                };
+            const key = this.getFilterFieldName(column.name);
+
+            if (!acc[key]) {
+                acc[key] = this.createColumnFilter(column);
             }
             return acc;
         }, { ...currentFilters });
@@ -1398,11 +1868,26 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         // Se usa el mismo motor de filtros que PrimeReact. Cuando el modelo no trae
         // matchMode se aplica el de la columna (CONTAINS en el DataTable), no otro:
         // si no, la exportación no coincidiría con las filas que se ven en la grilla.
+        // En las columnas de fecha se evalúa la fecha real (ms), igual que el DataTable,
+        // porque el valor visible de la celda está formateado.
         const matchMode = constraint.matchMode || FilterMatchMode.CONTAINS;
         const filterPredicate = (FilterService as any).filters?.[matchMode];
         if (typeof filterPredicate !== 'function') return true;
 
-        return filterPredicate(this.resolveRecordField(record, field), constraint.value);
+        return filterPredicate(this.resolveRecordField(record, this.resolveFilterRecordField(field)), constraint.value);
+    }
+
+    /**
+     * Campo del registro que corresponde a una clave del modelo de filtros: en las
+     * columnas de fecha la clave ya es el campo con la fecha real (ms), así que se
+     * usa tal cual; en el resto, la clave es el nombre de la columna.
+     */
+    resolveFilterRecordField(field: string): string {
+        if (field.indexOf(DATE_VALUE_SUFFIX) !== -1) {
+            return field;
+        }
+
+        return this.getFilterFieldName(field);
     }
 
     resolveRecordField(record: any, field: string): any {
@@ -1426,10 +1911,19 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         return (headerText || targetEntityType || 'ModernDataGrid').toString();
     }
 
+    /** Marca de tiempo de la exportación (nombre del archivo estándar). */
     getExportFileStamp(): string {
+        return this.getExportStampTokens().stamp;
+    }
+
+    /** Tokens de fecha y hora que puede usar la plantilla `archivo` de una vista. */
+    getExportStampTokens(): { date: string; time: string; stamp: string } {
         const now = new Date();
         const pad = (value: number) => value.toString().padStart(2, '0');
-        return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+        const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+        return { date, time, stamp: `${date}_${time}` };
     }
 
     exportToExcel = () => {
@@ -1439,19 +1933,27 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }));
         if (!columns.length) return;
 
-        // Se exportan las mismas filas que muestra la grilla (buscador global + filtros
-        // de columna) con las mismas columnas visibles que el usuario tiene seleccionadas.
+        // Se exportan las mismas filas que muestra la grilla (vista activa, buscador global
+        // y filtros de columna) con las mismas columnas visibles que el usuario tiene.
         const rows = this.getRecordsForExport();
+        const view = this.getCompiledView();
+        const tokens = this.getExportStampTokens();
+        const viewFileName = view ? buildViewFileName(view.fileTemplate, tokens) : '';
+        const fileName = viewFileName || `${this.getExportFileName()}_${tokens.stamp}`;
+        const sheetName = (view && view.sheetName) || this.getStrings().exportSheetName;
 
         console.log('[ModernDataGrid] exportando a Excel', {
             columnas: columns.map((column) => column.field),
             filas: rows.length,
-            filasCargadas: this.state.records.length
+            filasCargadas: this.state.records.length,
+            vista: view ? view.key : '',
+            archivo: fileName,
+            hoja: sheetName
         });
 
         exportRowsToExcel({
-            fileName: `${this.getExportFileName()}_${this.getExportFileStamp()}`,
-            sheetName: this.getStrings().exportSheetName,
+            fileName,
+            sheetName,
             columns,
             rows
         }).catch((error) => console.error('Error exporting to Excel:', error));
@@ -1594,6 +2096,22 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             <div className="modern-data-grid-header flex flex-wrap gap-2 justify-content-between align-items-center">
                 <h4 className="m-0">{headerText}</h4>
                 <div className="modern-data-grid-actions flex align-items-center gap-2">
+                    {this.getViewOptions().length > 0 && (
+                        <Dropdown
+                            value={this.state.activeView || NO_VIEW_OPTION}
+                            options={this.getViewOptions()}
+                            onChange={this.onViewChange}
+                            optionLabel="label"
+                            optionValue="value"
+                            itemTemplate={this.renderViewOption}
+                            valueTemplate={this.renderSelectedView}
+                            scrollHeight="18rem"
+                            className="modern-data-grid-view-selector"
+                            panelClassName="modern-data-grid-views-panel"
+                            aria-label={strings.viewsSelector}
+                            tooltip={strings.viewsSelector}
+                        />
+                    )}
                     {this.getColumnOptions().length > 0 && (
                         <MultiSelect
                             value={this.getSelectedColumnNames()}
@@ -1983,16 +2501,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
     /** Limpia el buscador global y todos los filtros de columna (deja el control como al cargar). */
     clearFilters = () => {
-        const columns = this.props.context.parameters.DataSource.columns || [];
-        const clearedFilters = columns.reduce((acc: any, column) => {
-            acc[column.name] = {
-                operator: FilterOperator.AND,
-                constraints: [{ value: null, matchMode: FilterMatchMode.CONTAINS }]
-            };
-
-            return acc;
-        }, {});
-
         // Se vuelve al estado inicial de la carga: sin pendientes, sin descartes y con la fuente completa.
         this.autoLoadFrom = -1;
         this.extraPageDismissed = false;
@@ -2002,7 +2510,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
         this.setState(
             {
-                filters: clearedFilters,
+                filters: this.createEmptyFilters(this.props.context.parameters.DataSource.columns),
+                activeView: NO_VIEW_KEY,
+                sortField: null,
+                sortOrder: null,
+                selectedColumns: null,
                 globalFilterValue: '',
                 searchText: '',
                 searchResetToken: this.state.searchResetToken + 1,
@@ -2017,9 +2529,9 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         );
     };
 
-    /** true si hay algún filtro activo (de columna o búsqueda global). */
+    /** true si hay algún filtro activo (de columna, de vista o búsqueda global). */
     hasActiveFilters(): boolean {
-        if (this.state.globalFilterValue) {
+        if (this.state.globalFilterValue || this.state.activeView) {
             return true;
         }
 
@@ -2090,6 +2602,9 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                     key={`modern-data-grid-${this.state.gridEpoch}`}
                     value={records}
                     {...this.getPaginationProps(displayPagination)}
+                    sortField={this.state.sortField ?? undefined}
+                    sortOrder={this.state.sortOrder ?? undefined}
+                    onSort={this.onSort}
                     loading={this.state.pendingPage !== null}
                     header={header}
                     paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
@@ -2131,6 +2646,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                     <Column selectionMode="multiple" headerStyle={SELECTION_COLUMN_HEADER_STYLE}></Column>
                     {visibleColumns.map((col) => {
                         const columnHeader = this.getColumnHeader(col);
+                        // Las columnas de fecha se filtran con un selector de rango de fechas.
+                        const dateColumn = isDateDataType(col.dataType);
 
                         return (
                             <Column
@@ -2138,10 +2655,13 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                                 field={col.name}
                                 header={columnHeader}
                                 sortable={allowSorting}
+                                sortField={dateColumn ? this.getFilterFieldName(col.name) : undefined}
                                 filter={allowFiltering}
-                                filterMatchMode={FilterMatchMode.CONTAINS}
+                                filterMatchMode={dateColumn ? FilterMatchMode.BETWEEN : FilterMatchMode.CONTAINS}
+                                filterField={dateColumn ? this.getFilterFieldName(col.name) : undefined}
+                                filterElement={dateColumn ? this.getColumnFilterElement(col.name) : undefined}
                                 filterPlaceholder={formatTemplate(strings.searchByColumn, { column: columnHeader })}
-                                showFilterMatchModes
+                                showFilterMatchModes={!dateColumn}
                                 showApplyButton={false}
                                 style={this.getColumnStyle(col.name)}
                                 body={this.getColumnBodyRenderer(col.name)}

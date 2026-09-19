@@ -52,4 +52,19 @@ export function normalizeText(value: string): string {
         .trim()
         .toLowerCase();
 }
+
+/**
+ * Milisegundos de un valor de fecha del dataset (Date o texto ISO). Devuelve
+ * `undefined` cuando el valor no es una fecha válida. Se usa para poder filtrar
+ * por rango de fechas aunque la celda muestre el valor ya formateado.
+ */
+export function toEpochMs(value: any): number | undefined {
+    if (value === null || value === undefined || value === '') {
+        return undefined;
+    }
+
+    const time = value instanceof Date ? value.getTime() : new Date(value).getTime();
+
+    return isNaN(time) ? undefined : time;
+}
   
