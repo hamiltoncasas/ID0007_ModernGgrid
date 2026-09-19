@@ -64,17 +64,15 @@ This is a **dataset** control: its data comes from the `DataSource` data set pro
 | `AllowSorting` | Two options | `true` / `false` | `false` | `true` |
 | `AllowFiltering` | Two options | `true` / `false` | `false` | `true` |
 | `IsEnabled` | Two options | `true` / `false` | `true` | `true` |
-| `FieldConfigurations` | Text area | `column=key:value\|key:value, …` with keys `currency`, `dateFormat`, `decimalPlaces`, `trueLabel`, `falseLabel` (legacy; the dedicated format properties below take precedence) | sample value | `Amount=currency:EUR, Flag=trueLabel:Yes\|falseLabel:No` |
+| `CamposVisibles` (*Visible fields*) | Text area | comma separated names, aliases, display names or `ColumnLabels` labels (visible at load; the column selector lists every column) | empty (all columns) | `name, Amount, Date` |
 | `CurrencyFormats` | Text area | `column=ISO[\|locale:xx-XX\|\|decimals:n], …` | empty (`USD`, `en-US`) | `Amount=EUR, Price=USD\|locale:en-US` |
-| `DateFormats` | Text area | `column=pattern, …` (date-only columns) | empty (`yyyy-MM-dd`) | `Due=dd/MM/yyyy` |
-| `DateTimeFormats` | Text area | `column=pattern, …` (date and time columns) | empty (`yyyy-MM-dd HH:mm:ss`) | `Created=dd/MM/yyyy HH:mm` |
-| `TimeFormats` | Text area | `column=pattern, …` (time-only columns) | empty (`HH:mm:ss`) | `Start=HH:mm` |
+| `DateFormats` | Text area | `column=pattern, …` (applies **only** to date-only columns) | empty (`yyyy-MM-dd`) | `Due=dd/MM/yyyy` |
+| `DateTimeFormats` | Text area | `column=pattern, …` (applies **only** to date-and-time columns) | empty (`yyyy-MM-dd HH:mm:ss`) | `Created=dd/MM/yyyy HH:mm` |
+| `TimeFormats` | Text area | `column=pattern, …` (applies **only** to time-only columns) | empty (`HH:mm:ss`) | `Start=HH:mm` |
 | `NumberFormats` | Text area | `column=[decimals][\|grouping:true\|false][\|locale:xx-XX], …` | empty (2 decimals) | `Quantity=3\|grouping:false` |
 | `DecimalFormats` | Text area | `column=decimals, …` | empty (2 decimals) | `Quantity=3` |
 | `BooleanLabels` | Text area | `column=True\|False, …` | empty (`Yes`/`No`) | `Active=Yes\|No` |
 | `Views` | Text area (JSON) | object (or array) of views | empty (no combo) | `{"active":{"nombre":"Active","columnas":"name;status","filtros":"status = Active"}}` |
-| `DateFormat` | Enum (36 options) | `default`, `dd_MM_yyyy`, `yyyy-MM-dd`, `dd_MM_yyyy_HH_mm`, `HH_mm`, … | `default` | `dd_MM_yyyy_HH_mm` |
-| `InitialColumns` | Text area | comma separated names, aliases or display names (visible at load; the column selector lists every column) | empty (all columns) | `name, Amount, Date` |
 | `ColumnLabels` | Text area | `column=Label, otherColumn=Other label` | empty (data set names) | `amount=Amount (€)` |
 | `Language` | Enum | `en` / `es` | `en` | `es` |
 | `RowColorRules` | Text area | `column=value:background[:text]\|value:background, …` (`~` contains, `*` any) | empty | `status=Active:#DFF6DD\|Pending:#FFF4CE` |
@@ -94,4 +92,4 @@ window.__mdgPerfReport();   // console.table with the accumulated summary
 
 Details, counters and reference measurements: [DOCUMENTATION.md §9.6](DOCUMENTATION.md).
 
-**Current version:** solution `1.0.0.35` · control `0.0.48`.
+**Current version:** solution `1.0.0.37` · control `0.0.50`.

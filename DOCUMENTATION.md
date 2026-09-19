@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.35` |
+| Versión de la solución | `1.0.0.37` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.48` |
+| Versión del control (manifest) | `0.0.50` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.48`) y la versión de la solución (`1.0.0.35`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.50`) y la versión de la solución (`1.0.0.37`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 
 ## 2. Requisitos
 
@@ -80,6 +80,22 @@ ModernDataGrid1.ColumnLabels = "nombre=Nombre completo, importe=Importe (€)"
 - **Mayúsculas y acentos no importan** (`IMPORTE` = `importe` = `Importé`).
 - Los **espacios internos** sí cuentan (`Campo A` ≠ `CampoA`); los del principio y el final se ignoran.
 
+## 4.3 Dónde salen las propiedades en Power Apps (Mostrar / Avanzado)
+
+Todo control de Power Apps, incluido este componente de código, tiene dos pestañas en el panel de propiedades:
+
+- **Mostrar** — la lista corta, con las propiedades del componente.
+- **Avanzado** — la lista completa, siempre disponible.
+
+Detalles que conviene conocer:
+
+1. **Las propiedades de un componente de código aparecen en `Mostrar` cuando cambia la versión del manifest y la app se vuelve a abrir.** Si importas una solución con la misma versión de control que ya tenía la app, Power Apps no refresca la pestaña `Mostrar` y las propiedades siguen solo en `Avanzado`. Por eso cada versión de este paquete sube el número de control (`0.0.50` en esta entrega): al importar hay que **cerrar y volver a abrir** la app y aceptar la actualización del componente.
+2. **La selección de columnas está en la propiedad `Campos visibles`** (aparece como *Campos visibles* en la lista, en el primer lugar de las propiedades). Ahí escribes las columnas que se ven al abrir; el usuario final puede mostrar u ocultar cualquier otra desde el selector de columnas de la barra.
+3. En el panel también están `Date Format`, `Views`, `Column Labels`, `Row Color Rules`, las propiedades de formato (`Currency Formats`, `Date Formats`, `Date and Time Formats`, `Time Formats`, `Number Formats`, `Decimal Formats`, `Yes No Labels`), los interruptores de la barra (`Display Header`, `Display Search`, `Display Pagination`), `Allow Sorting`, `Allow Filtering`, `Enable`, `Selection Mode`, `Empty Message`, `Header Text` y `Language`.
+4. En **Avanzado** (o desde la barra de fórmulas) aparecen con su **nombre técnico**: `CamposVisibles`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `Views`, `ColumnLabels`, `RowColorRules`, `IsEnabled`…
+
+> Si no ves una propiedad en `Mostrar`, búscala en **Avanzado**: nunca se pierde, y ambas apuntan al mismo valor.
+
 ## 5. Propiedades
 
 | Propiedad | Tipo | Valores válidos | Default (manifest) | Si queda vacía | Ejemplo | Descripción |
@@ -94,17 +110,15 @@ ModernDataGrid1.ColumnLabels = "nombre=Nombre completo, importe=Importe (€)"
 | `AllowSorting` | TwoOptions | `true`, `false` | — | `false` | `true` | Permite ordenar por columna |
 | `AllowFiltering` | TwoOptions | `true`, `false` | — | `false` | `true` | Muestra el icono de filtro (embudo) en cada columna |
 | `IsEnabled` | TwoOptions | `true`, `false` | `true` | `true` | `true` | Habilita la grilla (afecta a la selección) |
-| `FieldConfigurations` | TextArea | `columna=clave:valor\|clave:valor, …` con claves `currency`, `dateFormat`, `decimalPlaces`, `trueLabel`, `falseLabel` | ejemplo de moneda/fecha/decimal/booleano | — | `Importe=currency:EUR, Cantidad=decimalPlaces:3` | Formato de valores **por columna** (propiedad **heredada**). Las propiedades dedicadas de abajo tienen prioridad (ver §8.2) |
 | `CurrencyFormats` | TextArea | `columna=CODIGO[\|locale:…\|decimals:…], …` | vacío | `USD` con idioma `en-US` | `Importe=EUR, Precio=USD\|locale:en-US` | Moneda por columna (ver §8.6) |
-| `DateFormats` | TextArea | `columna=patrón, …` | vacío | `yyyy-MM-dd` | `Fecha=dd/MM/yyyy, Entrega=EEE dd/MM/yyyy` | Formato de las columnas de **solo fecha** (ver §8.7) |
-| `DateTimeFormats` | TextArea | `columna=patrón, …` | vacío | `yyyy-MM-dd HH:mm:ss` | `Creado=dd/MM/yyyy HH:mm` | Formato de las columnas de **fecha y hora** (ver §8.7) |
-| `TimeFormats` | TextArea | `columna=patrón, …` | vacío | `HH:mm:ss` | `HoraInicio=HH:mm` | Formato de las columnas de **solo hora** (ver §8.7) |
+| `DateFormats` | TextArea | `columna=patrón, …` (solo columnas de **tipo fecha**) | vacío | `yyyy-MM-dd` | `Fecha=dd/MM/yyyy, Entrega=EEE dd/MM/yyyy` | Formato de las columnas de **solo fecha**. Si la columna no es de ese tipo, se ignora (ver §8.7) |
+| `DateTimeFormats` | TextArea | `columna=patrón, …` (solo columnas de **tipo fecha y hora**) | vacío | `yyyy-MM-dd HH:mm:ss` | `FechaSolicitud=dd/MM/yyyy HH:mm` | Formato de las columnas de **fecha y hora**. Si la columna no es de ese tipo, se ignora (ver §8.7) |
+| `TimeFormats` | TextArea | `columna=patrón, …` (solo columnas de **tipo hora**) | vacío | `HH:mm:ss` | `HoraInicio=HH:mm` | Formato de las columnas de **solo hora**. Si la columna no es de ese tipo, se ignora (ver §8.7) |
 | `NumberFormats` | TextArea | `columna=[decimales][\|grouping:true\|false][\|locale:xx-XX], …` | vacío | 2 decimales, con separador de miles | `Cantidad=3\|grouping:false` | Decimales, separador de miles e idioma regional por columna (ver §8.8) |
 | `DecimalFormats` | TextArea | `columna=decimales, …` | vacío | 2 decimales | `Cantidad=3, Precio=2` | Atajo de decimales por columna (ver §8.8) |
 | `BooleanLabels` | TextArea | `columna=Verdadero\|Falso, …` | vacío | `Yes` / `No` | `Activo=Sí\|No` | Etiquetas del tipo Sí/No por columna (ver §8.9) |
 | `Views` | TextArea (JSON) | objeto o arreglo JSON con las vistas | vacío | sin combo de vistas | `{ "activos": { "nombre": "Activos" } }` | Vistas/informes del usuario final: columnas, títulos, filtros y orden (ver §8.10) |
-| `DateFormat` | Enum (36 opciones) | `default`, `dd_MM_yyyy`, `yyyy-MM-dd`, `dd_MM_yyyy_HH_mm`, `HH_mm`, … (lista en §8.3) | `default` | `default` | `dd_MM_yyyy_HH_mm` | Formato **global** de fecha / fecha y hora / hora, cuando la columna no tiene formato en las propiedades `DateFormats`/`DateTimeFormats`/`TimeFormats` (ver §5.1 y §8.3) |
-| `InitialColumns` | TextArea | nombres, alias o nombres para mostrar separados por comas | vacío | todas | `nombre, Importe, Fecha` | Columnas **visibles al abrir**. El selector de columnas siempre ofrece todas las del dataset (ver §5.1 y §8.1) |
+| `CamposVisibles` (*Campos visibles*) | TextArea | nombres, alias, nombres para mostrar o etiquetas separados por comas | vacío | todas | `ID_Solicitud, Cliente, Fecha` | Columnas **visibles al abrir**. El selector de columnas siempre ofrece todas las del dataset (ver §5.1 y §8.1) |
 | `ColumnLabels` | TextArea | `columna=Etiqueta visible, otraColumna=Otra etiqueta` | vacío | nombres del dataset | `nombre=Nombre completo, importe=Importe (€)` | Nombres que verá el usuario final para cada columna (ver §5.1 y §8.5) |
 | `Language` | Enum | `en`, `es` | `en` | `en` | `es` | Idioma de todos los textos del control |
 | `RowColorRules` | TextArea | `columna=valor:colorFondo[:colorTexto]\|…, otraColumna=…` (`~` = contiene, `*` = cualquiera) | vacío | sin colores | `estado=Activo:#DFF6DD\|Pendiente:#FFF4CE, prioridad=~alta:#FDE7E9` | Colorea el registro completo según el valor de una columna (ver §7.8) |
@@ -167,26 +181,29 @@ Habilita la interacción del control. Con `false` no se permite seleccionar regi
 true
 ```
 
-### `FieldConfigurations` — TextArea · default ejemplo de moneda/fecha/decimal/booleano
-Formato de valores **columna a columna**, identificando la columna por **nombre, alias o nombre para mostrar** (sin distinguir mayúsculas ni acentos).
-```text
-Importe=currency:EUR, Cantidad=decimalPlaces:3, Activo=trueLabel:Sí|falseLabel:No, Fecha=dateFormat:dd/MM/yyyy HH:mm
-```
-Claves: `currency`, `dateFormat`, `decimalPlaces`, `trueLabel`, `falseLabel` (detalle en §8.2). Si una columna no aparece, se usan los valores por defecto.
+### `FieldConfigurations` — **retirada en `1.0.0.37`**
+Esta propiedad combinada se eliminó del control. Su equivalente son las propiedades dedicadas, columna a columna:
 
-> **Propiedad heredada.** Sigue funcionando igual que siempre, pero para configurar un formato se prefieren las propiedades dedicadas (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`): son más cortas de escribir y **tienen prioridad** sobre esta. Sirven, por ejemplo, para no duplicar la moneda o los decimales de muchas columnas de golpe.
-
-### `DateFormat` — Enum (36 opciones) · default `default`
-Formato **global** aplicado a todas las columnas de fecha y fecha/hora. La opción `Predeterminado (según el tipo de dato)` deja los formatos actuales (`yyyy-MM-dd` para solo fecha y `yyyy-MM-dd HH:mm:ss` para fecha y hora). Incluye 16 formatos de fecha, 14 de fecha y hora y 5 de hora (lista completa en §8.3). Es el **último** de la cadena de precedencia: `DateFormats`, `DateTimeFormats`, `TimeFormats` y `FieldConfigurations` (`dateFormat`) tienen prioridad sobre este valor.
 ```text
-dd/MM/yyyy HH:mm
+CurrencyFormats → Importe=EUR
+DateFormats     → Fecha=dd/MM/yyyy
+DateTimeFormats → Creado=dd/MM/yyyy HH:mm
+TimeFormats     → HoraInicio=HH:mm
+NumberFormats   → Cantidad=3|grouping:false
+DecimalFormats  → Cantidad=3
+BooleanLabels   → Activo=Sí|No
 ```
 
-### `InitialColumns` — TextArea · default vacío
+Si tenías algo configurado en `FieldConfigurations`, móntalo en la propiedad que corresponda al tipo de dato (el detalle de cada una está en §8.6 a §8.9).
+
+### `DateFormat` — **retirada en `1.0.0.37`**
+El combo global de 36 formatos se eliminó: los formatos de fecha se configuran **solo** en `DateFormats` (solo fecha), `DateTimeFormats` (fecha y hora) y `TimeFormats` (solo hora). Si una columna de fecha no aparece en ninguna de las tres, se muestra con el formato por defecto de su tipo (`yyyy-MM-dd`, `yyyy-MM-dd HH:mm:ss` o `HH:mm:ss`).
+
+### `CamposVisibles` (*Campos visibles*) — TextArea · default vacío
 Columnas que se muestran **al cargar**, separadas por comas (nombre, alias, nombre para mostrar o etiqueta de `ColumnLabels`). Vacío = todas.
 
 ```text
-nombre, Importe, Fecha
+ID_Solicitud, Cliente, Fecha
 ```
 
 No limita el selector de columnas: el selector siempre lista **todas** las columnas del dataset (con su tipo de dato) para que el usuario final pueda marcar cualquier otra. Si el texto no coincide con ninguna columna, se avisa por consola y se muestran todas.
@@ -222,20 +239,21 @@ Formato de las columnas de **solo fecha** (`DateAndTime.DateOnly`).
 ```text
 Fecha=dd/MM/yyyy, Entrega=EEE dd/MM/yyyy
 ```
-Acepta los formatos del combo `DateFormat` (`dd_MM_yyyy`) o cualquier patrón de fecha. Si la columna no aparece se usan `DateTimeFormats` (en fecha y hora), la propiedad heredada `FieldConfigurations` y, por último, el combo global `DateFormat`. Detalle en §8.7.
+Se aplica **automáticamente solo a las columnas de tipo fecha**: si la columna indicada es de fecha y hora, de hora o de texto, **no se aplica** (y la consola lo avisa). Acepta cualquier patrón de fecha (`dd/MM/yyyy`, `EEE dd/MM/yyyy`) o un token del catálogo (`dd_MM_yyyy`). Detalle en §8.7.
 
 ### `DateTimeFormats` — TextArea · default vacío
 Formato de las columnas de **fecha y hora** (`DateAndTime.DateAndTime`).
 ```text
-Creado=dd/MM/yyyy HH:mm, Cita=EEEE d de MMMM de yyyy HH:mm
+FechaSolicitud=dd/MM/yyyy HH:mm, FechaCargue=dd/MM/yyyy H:mm
 ```
-Para mostrar **solo la hora** de una columna de fecha y hora, basta con poner un patrón de hora: `Creado=HH:mm`. Detalle en §8.7.
+Se aplica **solo a las columnas de fecha y hora**; si la columna es de otro tipo, no se aplica. Para mostrar **solo la hora** de una columna de fecha y hora, basta con un patrón de hora: `FechaSolicitud=HH:mm`. Detalle en §8.7.
 
 ### `TimeFormats` — TextArea · default vacío
 Formato de las columnas de **solo hora** (`DateAndTime.TimeOnly`).
 ```text
 HoraInicio=HH:mm, Duracion=HH:mm:ss
 ```
+Se aplica **solo a las columnas de tipo hora**; si la columna es de otro tipo, no se aplica.
 
 ### `NumberFormats` — TextArea · default vacío
 Formato de los números de tipo **Decimal** por columna: decimales, separador de miles e idioma regional.
@@ -274,7 +292,7 @@ Acepta JSON estricto y también el formato de objeto de JavaScript (nombres de p
 | `Language` | `es` |
 | `DisplayHeader` / `DisplaySearch` / `DisplayPagination` | `true` |
 | `AllowSorting` / `AllowFiltering` | `true` |
-| `InitialColumns` | `cliente, importe, vencimiento, estado, responsable` |
+| `CamposVisibles` | `cliente, importe, vencimiento, estado, responsable` |
 | `DateFormats` | `vencimiento=dd/MM/yyyy` |
 | `CurrencyFormats` | `importe=EUR` |
 | `DecimalFormats` | `importe=2` |
@@ -300,7 +318,7 @@ Acepta JSON estricto y también el formato de objeto de JavaScript (nombres de p
 |---|---|
 | `Language` | `en` |
 | `DisplaySearch` | `true` |
-| `InitialColumns` | `sku, nombre, precio, stock` |
+| `CamposVisibles` | `sku, nombre, precio, stock` |
 | `CurrencyFormats` | `precio=USD` |
 | `DecimalFormats` | `stock=0` |
 | `RowColorRules` | `stock=0:#FDE7E9\|*:#F5F5F5` |
@@ -400,7 +418,7 @@ El **total de la tabla en la base de datos no se muestra**.
 `SelectionMode`: `multiple` o `checkbox`. La selección se publica en el dataset (`setSelectedRecordIds`), de modo que la app puede leerla. Con `IsEnabled = false` no se permite seleccionar.
 
 ### 7.6 Selector de columnas (usuario final)
-En la barra hay un desplegable que lista **todas las columnas del dataset** para que el usuario final las marque o desmarque en tiempo de ejecución (por ejemplo, para no ver una columna que no necesita). El disparador es cuadrado y **no muestra texto ni etiquetas** (solo su icono), para que la barra quepa en una fila. `InitialColumns` define qué columnas vienen marcadas al abrir; vacío = todas. La selección del usuario no modifica el dataset, solo lo que se pinta (y lo que se exporta).
+En la barra hay un desplegable que lista **todas las columnas del dataset** para que el usuario final las marque o desmarque en tiempo de ejecución (por ejemplo, para no ver una columna que no necesita). El disparador es cuadrado y **no muestra texto ni etiquetas** (solo su icono), para que la barra quepa en una fila. `Campos visibles` define qué columnas vienen marcadas al abrir; vacío = todas. La selección del usuario no modifica el dataset, solo lo que se pinta (y lo que se exporta).
 
 El panel de la lista muestra, en cada opción, el **nombre de la columna** y su **tipo de dato** (Texto, Fecha y hora, Número, Moneda, Sí/No, Opción, Correo…), y lleva dos botones al pie:
 
@@ -413,7 +431,7 @@ Si el programador definió **vistas** (§8.10), al lado de este selector aparece
 Botón con el icono de Excel en la barra. Genera un archivo **`.xlsx` real** (Office Open XML) sin librerías externas, con:
 
 - **Solo las filas que se ven**: aplica exactamente el mismo criterio que la grilla (vista activa + buscador global + filtros por columna, con el mismo motor de comparación y el mismo modo de coincidencia de la columna) sobre los registros cargados. Si la vista muestra 23 resultados, el archivo trae esos **23**.
-- **Solo las columnas visibles** según el selector de columnas / `InitialColumns` / la vista elegida (y con sus etiquetas de `ColumnLabels` o los títulos de la vista).
+- **Solo las columnas visibles** según el selector de columnas / `Campos visibles` / la vista elegida (y con sus etiquetas de `ColumnLabels` o los títulos de la vista).
 - Encabezados con el nombre para mostrar y en negrita, ancho de columna automático.
 - Los valores tal como se ven en la grilla (ya formateados).
 - Nombre de archivo: `HeaderText` (o el nombre de la entidad) + marca de fecha/hora. Hoja: `Datos` en español, `Data` en inglés.
@@ -446,16 +464,20 @@ Los valores se transforman antes de pintarse, filtrarse y exportarse:
 
 | Tipo de dato | Por defecto | Cómo cambiarlo |
 |---|---|---|
-| `Currency` | `$1,234.50` (USD, `en-US`) | `CurrencyFormats` (o `FieldConfigurations` → `currency`) |
-| `Decimal` | 2 posiciones, con separador de miles | `DecimalFormats` / `NumberFormats` (o `FieldConfigurations` → `decimalPlaces`) |
-| `TwoOptions` | `Yes` / `No` | `BooleanLabels` (o `FieldConfigurations` → `trueLabel` / `falseLabel`) |
-| `DateAndTime.DateOnly` | `yyyy-MM-dd` | `DateFormats` → `DateFormat` (global) |
-| `DateAndTime.DateAndTime` | `yyyy-MM-dd HH:mm:ss` | `DateTimeFormats` → `DateFormats` → `DateFormat` (global) |
-| `DateAndTime.TimeOnly` | `HH:mm:ss` | `TimeFormats` → `DateFormat` (global) |
+| `Currency` | `$1,234.50` (USD, `en-US`) | `CurrencyFormats` |
+| `Decimal` | 2 posiciones, con separador de miles | `DecimalFormats` / `NumberFormats` |
+| `TwoOptions` | `Yes` / `No` | `BooleanLabels` |
+| `DateAndTime.DateOnly` | `yyyy-MM-dd` | `DateFormats` |
+| `DateAndTime.DateAndTime` | `yyyy-MM-dd HH:mm:ss` | `DateTimeFormats` |
+| `DateAndTime.TimeOnly` | `HH:mm:ss` | `TimeFormats` |
 | `SingleLine.Phone` | se prefija con `tel:` | — |
 | `SingleLine.URL` | se prefija con `<a href=…>` | — |
 
-**Orden de prioridad** (gana el primero que exista): 1) la propiedad dedicada de ese tipo de dato, 2) `FieldConfigurations`, 3) el combo global `DateFormat`. La columna se identifica por nombre lógico, alias, nombre para mostrar o la etiqueta de `ColumnLabels`.
+**Cómo se elige el formato** (solo se aplica el que corresponda al tipo de dato de la columna):
+
+1. `DateFormats` para las columnas de **solo fecha**, `DateTimeFormats` para las de **fecha y hora** y `TimeFormats` para las de **solo hora**. La columna se identifica por nombre lógico, alias, nombre para mostrar o la etiqueta de `ColumnLabels`.
+2. Si la columna no está en la propiedad de su tipo, se queda con el **valor por defecto del tipo** (`yyyy-MM-dd`, `yyyy-MM-dd HH:mm:ss` o `HH:mm:ss`).
+3. Si una columna aparece en la propiedad de **otro** tipo (por ejemplo una columna de fecha y hora escrita en `DateFormats`), ese formato se **ignora** y la consola del navegador lo avisa una vez.
 
 Como los filtros por columna, el buscador global, los colores de fila y la exportación trabajan sobre el **valor ya formateado**, cualquier cambio de formato afecta también a esas funciones.
 
@@ -466,7 +488,7 @@ El programador puede **renombrar** las columnas con `ColumnLabels` sin tocar Dat
 nombre=Nombre completo, importe=Importe (€), cuentas_pk=Cuenta
 ```
 
-El nombre se aplica al **encabezado** de la grilla, al **encabezado del Excel**, al **placeholder del filtro** de esa columna (*Buscar en …*) y a las **opciones del selector de columnas**. Además sirve como identificador en `InitialColumns`, `FieldConfigurations` y `RowColorRules`. Detalle en §8.5.
+El nombre se aplica al **encabezado** de la grilla, al **encabezado del Excel**, al **placeholder del filtro** de esa columna (*Buscar en …*) y a las **opciones del selector de columnas**. Además sirve como identificador en `Campos visibles` y `RowColorRules`. Detalle en §8.5.
 
 ### 7.12 Limpiar todos los filtros
 El botón con el icono de **filtro tachado** limpia de un clic el buscador global, los filtros de todas las columnas (incluidos los rangos de fechas), la **vista** elegida y el orden, y devuelve la grilla a la página 1 con todas las columnas. Está **deshabilitado** cuando no hay ningún filtro activo, de modo que se ve de un vistazo si la grilla está filtrada.
@@ -489,54 +511,35 @@ Después de elegir una vista el usuario puede **filtrar y buscar encima de ella*
 
 ## 8. Referencia de formatos
 
-### 8.1 `InitialColumns`
+### 8.1 `CamposVisibles` (*Campos visibles*)
 Lista separada por comas de columnas a mostrar **al cargar**. Acepta **nombre lógico, alias, nombre para mostrar o la etiqueta de `ColumnLabels`** (sin distinguir mayúsculas ni acentos).
 
 ```text
-nombre, Importe facturado, cuentas_pk
+ID_Solicitud, Cliente, FechaSolicitud
 ```
 
 Vacío = todas las columnas del dataset. **No limita el selector de columnas**: el usuario final siempre puede marcar cualquier columna del dataset (el selector lista todas, con su tipo de dato). Si ninguna entrada coincide con una columna, la consola lo avisa y se muestran todas.
 
-### 8.2 `FieldConfigurations`
-Formato general:
+### 8.2 `FieldConfigurations` (retirada en `1.0.0.37`)
+Esta propiedad se **eliminó** del control en la versión `1.0.0.37` (control `0.0.50`). En su lugar se usan las propiedades por tipo de dato, que admiten la misma información sin la sintaxis `clave:valor`:
 
-```text
-Columna=clave:valor|clave:valor, OtraColumna=clave:valor
-```
-
-- La **columna** se identifica por nombre lógico, alias, nombre para mostrar o la etiqueta de `ColumnLabels` (sin distinguir mayúsculas, acentos ni espacios extremos).
-- `,` separa columnas y `|` separa pares `clave:valor` dentro de la misma columna.
-- Si una columna no aparece en la lista, se aplican los valores por defecto.
-- El `dateFormat` de una columna **tiene prioridad** sobre la propiedad global `DateFormat`.
-- Las propiedades dedicadas (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) **tienen prioridad** sobre esta: si una columna está en ambas, gana la dedicada. Esta propiedad es útil cuando quieres configurar varias columnas del mismo tipo en una sola línea.
-
-| Tipo de dato | Clave | Ejemplo | Resultado |
-|---|---|---|---|
-| `Currency` | `currency` | `Importe=currency:GBP` | `£1,234.50` |
-| `DateAndTime.DateOnly` | `dateFormat` | `Fecha=dateFormat:dd/MM/yyyy` | `16/09/2026` |
-| `DateAndTime.DateAndTime` | `dateFormat` | `Creado=dateFormat:dd/MM/yyyy HH:mm` | `16/09/2026 18:30` |
-| `Decimal` | `decimalPlaces` | `Cantidad=decimalPlaces:3` | `7.123` |
-| `TwoOptions` | `trueLabel` / `falseLabel` | `Activo=trueLabel:Sí\|falseLabel:No` | `Sí` / `No` |
-| `SingleLine.Phone` | — | — | se prefija con `tel:` |
-| `SingleLine.URL` | — | — | se prefija con `<a href=…>` |
-
-Ejemplo completo:
-
-```text
-Importe=currency:EUR, Cantidad=decimalPlaces:3, Activo=trueLabel:Sí|falseLabel:No, Fecha=dateFormat:dd/MM/yyyy HH:mm
-```
-
-> El `dateFormat` admite **cualquier patrón de date-fns** (por ejemplo `d 'de' MMMM 'de' yyyy HH:mm`), no solo los del combo `DateFormat`, así que esta propiedad es la vía para formatos que no estén en la lista.
-
-### 8.3 `DateFormat`
-Combo con **36 opciones** (incluida `Predeterminado`). Aplica a todas las columnas de fecha y fecha/hora; cada columna puede sobrescribirlo con `FieldConfigurations`.
-
-**Fecha (16)**
-
-| Opción | Resultado |
+| Antes (retirada) | Ahora |
 |---|---|
-| `default` — Predeterminado (según el tipo de dato) | `2026-09-16` / `2026-09-16 18:30:45` |
+| `Importe=currency:EUR` | `CurrencyFormats` → `Importe=EUR` |
+| `Fecha=dateFormat:dd/MM/yyyy` | `DateFormats` → `Fecha=dd/MM/yyyy` |
+| `Creado=dateFormat:dd/MM/yyyy HH:mm` | `DateTimeFormats` → `Creado=dd/MM/yyyy HH:mm` |
+| `Cantidad=decimalPlaces:3` | `DecimalFormats` → `Cantidad=3` (o `NumberFormats` → `Cantidad=3\|grouping:false`) |
+| `Activo=trueLabel:Sí\|falseLabel:No` | `BooleanLabels` → `Activo=Sí\|No` |
+
+Detalle de cada propiedad nueva en §8.6 a §8.9. Si una app todavía tiene texto en `FieldConfigurations`, hay que moverlo a estas propiedades: la propiedad ya no existe en el manifest.
+
+### 8.3 Catálogo de patrones de fecha (referencia)
+Valores que puedes escribir en `DateFormats`, `DateTimeFormats` y `TimeFormats`. La columna izquierda es el **token** (nombre corto que también se acepta) y la derecha el **ejemplo** con el patrón real; puedes escribir el patrón directamente (`dd/MM/yyyy HH:mm`) o cualquier otro patrón de fecha válido.
+
+**Solo fecha (16)**
+
+| Token | Patrón y ejemplo |
+|---|---|
 | `dd-MM-yyyy` | `16-09-2026` |
 | `dd_MM_yyyy` | `16/09/2026` |
 | `d_M_yyyy` | `16/9/2026` |
@@ -605,12 +608,12 @@ nombre=Nombre completo, importe=Importe (€), cuentas_pk=Cuenta, ciudad=
 - Una etiqueta vacía (`ciudad=`) deja el nombre que trae el dataset.
 - Columnas inexistentes o entradas mal formadas se ignoran con un aviso en la consola del navegador.
 - El nombre personalizado se aplica en: **encabezado de la grilla**, **encabezado del Excel exportado**, **placeholder del filtro de esa columna** (*Buscar en …*) y **opciones del selector de columnas**.
-- Además, la etiqueta funciona como **identificador** en `InitialColumns`, `FieldConfigurations` y `RowColorRules`, así que puedes configurar por el nombre que ve el usuario:
+- Además, la etiqueta funciona como **identificador** en `CamposVisibles`, las propiedades de formato y `RowColorRules`, así que puedes configurar por el nombre que ve el usuario:
 
 ```text
-ColumnLabels        → importe=Importe (€)
-FieldConfigurations → Importe (€)=currency:EUR
-RowColorRules       → Importe (€)=~1.000:#FFF4CE
+ColumnLabels   → importe=Importe (€)
+CurrencyFormats→ Importe (€)=EUR
+RowColorRules  → Importe (€)=~1.000:#FFF4CE
 ```
 
 Para saber **dónde** se escribe esta propiedad en la app, ver §4.1; para saber qué identificador usar en cada columna, §4.2.
@@ -640,7 +643,6 @@ Importe=EUR, Precio=USD|locale:en-US|decimals:2, Saldo=COP|decimals:0
 - Sin opciones: `Importe=EUR` se pinta con el idioma `en-US` y los decimales que correspondan a la moneda.
 - Si el código de la moneda o el `locale` no son válidos, esa columna se muestra con el valor sin formatear y la consola avisa del error (la grilla sigue funcionando).
 - Vacío = todas las columnas de moneda con `USD` y `en-US`.
-- La propiedad heredada `FieldConfigurations` (`currency`) se sigue respetando cuando la columna no está aquí.
 
 ### 8.7 `DateFormats`, `DateTimeFormats` y `TimeFormats`
 Formato de fecha por columna, **separado por tipo de dato**:
@@ -657,12 +659,12 @@ DateTimeFormats → Creado=dd/MM/yyyy HH:mm, Cita=EEEE d de MMMM de yyyy HH:mm
 TimeFormats     → HoraInicio=HH:mm, Duracion=HH:mm:ss
 ```
 
-- El formato se puede escribir con el **token** del combo `DateFormat` (`dd_MM_yyyy`, `dd_MM_yyyy_HH_mm`) o directamente como **patrón** (`dd/MM/yyyy`, `HH:mm`), así que no estás limitado a los 36 del combo: cualquier patrón de fecha válido sirve (por ejemplo `d 'de' MMMM 'de' yyyy`).
+- El formato se puede escribir como **patrón** (`dd/MM/yyyy`, `HH:mm`, `d 'de' MMMM 'de' yyyy`) o con un **token** del catálogo de §8.3 (`dd_MM_yyyy`, `dd_MM_yyyy_HH_mm`); no hay una lista cerrada de formatos.
 - Separa las columnas con `,`. Si un patrón lleva `|`, es porque estás usando una propiedad de formato con opciones; en las de fecha el patrón completo se toma como valor.
 - **Para ver solo la hora** de una columna de fecha y hora, define un patrón de hora en `DateTimeFormats`: `Creado=HH:mm`.
-- Un formato con hora aplicado a una columna de **solo fecha** mostrará `00:00`, porque el valor no trae hora.
-- **Precedencia** para una columna de fecha: `DateTimeFormats` (fecha y hora) → `DateFormats` → `FieldConfigurations` (`dateFormat`) → combo global `DateFormat` → valor por defecto del tipo.
-- Vacío = se usan los formatos por defecto (`yyyy-MM-dd`, `yyyy-MM-dd HH:mm:ss`, `HH:mm:ss`).
+- **El tipo de dato manda**: cada propiedad se aplica **solo** si la columna es de su tipo. Una columna de fecha y hora escrita en `DateFormats`, una columna de solo fecha escrita en `DateTimeFormats` o una columna de texto en cualquiera de las tres **no reciben ese formato** (se quedan con el valor por defecto de su tipo) y la consola del navegador lo avisa una vez. Así, si te equivocas al escribir el nombre de la columna o la pones en la propiedad equivocada, el resultado es simplemente que no se aplica nada.
+- Un formato con hora aplicado a una columna de **solo fecha** mostraría `00:00`, pero como ese caso no está permitido por el tipo de dato, la propiedad se ignora.
+- **Sin formato**: se usan los valores por defecto (`yyyy-MM-dd` para solo fecha, `yyyy-MM-dd HH:mm:ss` para fecha y hora y `HH:mm:ss` para solo hora).
 
 ### 8.8 `NumberFormats` y `DecimalFormats`
 Formato de los números de tipo **Decimal** por columna.
@@ -684,7 +686,6 @@ DecimalFormats → Porcentaje=1, Precio=2
 - Si la misma columna aparece en `NumberFormats` y en `DecimalFormats`, gana `NumberFormats`.
 - Sin configuración: **2 decimales** con separador de miles y `en-US`.
 - Si el `locale` no es válido, la columna se muestra sin formatear y la consola avisa (la grilla sigue funcionando).
-- La propiedad heredada `FieldConfigurations` (`decimalPlaces`) se sigue respetando cuando la columna no está en las dedicadas.
 
 ### 8.9 `BooleanLabels`
 Etiquetas que se muestran en lugar de `Yes`/`No` en las columnas de tipo **TwoOptions** (Sí/No).
@@ -701,7 +702,6 @@ Activo=Sí|No, Aprobado=Sí|Pendiente, Archivado=Archivado
 - Separa las columnas con `,` y las dos etiquetas con `|` (la segunda es opcional).
 - Las etiquetas se aplican al valor visible, así que también son lo que se **busca**, **filtra**, **colorea** y **exporta**.
 - Vacío = `Yes` / `No` (o `Sí`/`No` si prefieres configurarlas así).
-- La propiedad heredada `FieldConfigurations` (`trueLabel`/`falseLabel`) se sigue respetando cuando la columna no está aquí.
 
 
 
@@ -813,8 +813,8 @@ Vistas que el usuario final elige en el **combo de la barra**, junto al selector
 | `ModernDataGrid/components/DataGrid.css` | Layout del control, de la barra de herramientas y de los tooltips |
 | `ModernDataGrid/components/ExcelIcon.tsx` | Icono SVG de Excel |
 | `ModernDataGrid/helpers/Utils.ts` | Formateo de fechas, normalización de texto y conversión a milisegundos |
-| `ModernDataGrid/helpers/DateFormat.ts` | Catálogo de formatos de la propiedad `DateFormat` y resolución de patrones |
-| `ModernDataGrid/helpers/FieldFormats.ts` | Formatos por columna (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) y compatibilidad con `FieldConfigurations` |
+| `ModernDataGrid/helpers/DateFormat.ts` | Catálogo de patrones de fecha admitidos por las propiedades de formato y resolución de patrones |
+| `ModernDataGrid/helpers/FieldFormats.ts` | Formatos por columna (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) |
 | `ModernDataGrid/helpers/Views.ts` | Vistas/informes de la propiedad `Views`: análisis del JSON, filtros, orden, títulos y nombre del Excel |
 | `ModernDataGrid/helpers/ColumnLabels.ts` | Etiquetas personalizadas de encabezados (`ColumnLabels`) |
 | `ModernDataGrid/helpers/ColumnTypes.ts` | Nombre traducido del tipo de dato de cada columna (selector de columnas) |
@@ -868,11 +868,12 @@ npm run build
 - **Exportación**: se aplican los mismos criterios que la grilla usando `FilterService` de PrimeReact, para que los modos de coincidencia coincidan exactamente.
 - **Idioma**: se registra con `addLocale('es', …)` y se activa con `locale('es')` (PrimeReact lee la locale global al pintar), por eso se aplica en el constructor y en `shouldComponentUpdate`.
 - **Layout de la barra (desde `1.0.0.35`)**: una sola fila (`flex-wrap: nowrap`) con controles de 2,25 rem e iconos de 1 rem; el título se recorta antes que los controles y el buscador es el que se contrae. El selector de columnas es cuadrado (solo el icono) y su panel muestra el tipo de dato y los botones **Todas** / **Quitar todas**.
-- **Selector de columnas y `InitialColumns` (desde `1.0.0.35`)**: `getBaseColumns()` devuelve siempre todas las columnas del dataset (para que el selector y las vistas nunca pierdan columnas) y `getInitialSelection()` traduce `InitialColumns` a la selección inicial (`null` = todas). Si el texto no coincide con ninguna columna, se avisa por consola y se muestran todas.
-- **Formato por columna (desde `1.0.0.34`)**: `helpers/FieldFormats.ts` mezcla las propiedades dedicadas (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) con la heredada `FieldConfigurations` y produce el formato de cada columna, resolviendo la columna por nombre, alias, nombre para mostrar o etiqueta. `getParsedFormatProperties()` analiza las siete propiedades **una vez** por cambio de texto y las reparte a todas las columnas del mapeo.
+- **Selector de columnas y `Campos visibles` (desde `1.0.0.35`, renombrada en `1.0.0.37`)**: `getBaseColumns()` devuelve siempre todas las columnas del dataset (para que el selector y las vistas nunca pierdan columnas) y `getInitialSelection()` traduce `CamposVisibles` a la selección inicial (`null` = todas). Si el texto no coincide con ninguna columna, se avisa por consola y se muestran todas. El nombre técnico anterior (`InitialColumns`) ya no existe.
+- **Formato por columna (desde `1.0.0.34`)**: `helpers/FieldFormats.ts` analiza las propiedades de formato (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) y produce el formato de cada columna, resolviendo la columna por nombre, alias, nombre para mostrar o etiqueta. `getParsedFormatProperties()` analiza las siete propiedades **una vez** por cambio de texto y las reparte a todas las columnas del mapeo. (Desde `1.0.0.37` ya no existe la propiedad heredada `FieldConfigurations`.)
 - **Rango de fechas (desde `1.0.0.34`)**: el valor visible de una columna de fecha es texto formateado, así que el mapeo guarda además la **fecha real en milisegundos** en un campo oculto (`columna + '__mdgdatevalue'`). El `Column` recibe `filterField` apuntando a ese campo, `filterMatchMode = between` y un `filterElement` con el calendario de rango; el modelo de filtros se indexa por ese mismo campo (`createColumnFilter` / `getFiltersForTable`) y la exportación resuelve el mismo valor (`resolveFilterRecordField`), de modo que grilla y Excel filtran igual. El rango se guarda como `[inicioDelDía, finDelDía]` para que los dos extremos queden incluidos.
 - **Vistas (desde `1.0.0.34`)**: `helpers/Views.ts` analiza la propiedad `Views` (JSON estricto o con `;` y nombres sin comillas), traduce los identificadores a nombres lógicos del dataset (`compileView`) y devuelve las columnas, títulos, filtros, orden y el nombre del Excel. Los filtros de la vista se aplican en la misma pasada que el buscador global (`getFilteredRecords`), con caché por `[filas, término, vista]`, y el orden se controla desde el estado (`sortField`/`sortOrder` + `onSort`) para poder aplicarlo desde la vista sin perder el ordenamiento manual.
-- **Catálogo de fechas**: los tokens de `helpers/DateFormat.ts` y los `<value>` de `DateFormat` en el manifest deben coincidir **en contenido y orden**; hay una prueba automática que los compara y además valida que cada patrón funcione con date-fns. `resolveDatePattern()` acepta tanto un token del combo como un patrón escrito directamente.
+- **Catálogo de fechas**: `helpers/DateFormat.ts` enumera los patrones de ejemplo (token → patrón) que aceptan `DateFormats`, `DateTimeFormats` y `TimeFormats`. Las propiedades también aceptan cualquier patrón escrito directamente, así que el catálogo es una ayuda. `resolveDatePattern()` resuelve tanto el token como el patrón.
+- **Formato estricto por tipo (desde `1.0.0.37`)**: `buildColumnFormat()` toma el patrón **solo** de la propiedad que corresponde al tipo de dato de la columna (`findDateAssignment`), de modo que una columna mal ubicada no recibe ningún formato y se queda con el valor por defecto de su tipo. Los avisos de columna mal ubicada se emiten una sola vez por columna y propiedad (`wrongTypeWarnings`).
 - **Normalización compartida**: `normalizeText()` en `helpers/Utils.ts` (sin mayúsculas, sin acentos, sin espacios extremos) se usa tanto para los colores de fila como para resolver la configuración por columna.
 - **Nada de apóstrofos en el manifest**: Dataverse valida los atributos con el tipo `noAposStringType`, así que un `'` (por ejemplo en `display-name-key`) hace fallar la importación con *XSD validation failed … The Pattern constraint failed*. Los patrones de date-fns con comillas (`d 'de' MMMM 'de' yyyy`, `yyyy-MM-dd'T'HH:mm:ss`) se escriben **sin** apóstrofos en el manifest; el patrón real vive en `helpers/DateFormat.ts`. Comprobación rápida antes de empaquetar:
 
@@ -882,7 +883,7 @@ Select-String -Path ModernDataGrid\ControlManifest.Input.xml -Pattern "=\"[^""]*
 
 - **Rendimiento (desde `1.0.0.32`)**: las notas de mantenimiento del mapeo incremental, la identidad estable de props, el buscador con retardo y la regla de paginador/scroll virtual están en §9.4 y la medición y el diagnóstico en §9.6.
 
-- **Mapeo incremental (desde `1.0.0.32`)**: cada fila formateada se guarda en `mappedRowCache` por `recordId` junto a la **referencia** del record del dataset. Si el record es el mismo objeto y la estructura (columnas + `FieldConfigurations` + `DateFormat` + `Language`) no cambió, la fila se **reutiliza** sin volver a formatear (`reusedRows`). Se reformatea **todo** cuando cambia la estructura, cuando la app pide recargar (`invalidateMappedRows`, al pulsar *Actualizar*) o cuando el host revalida con `force` y la firma de filas no cambió. **No se usa `lodash.isEqual`**: la detección de cambios es por firma de filas (`loading`, cantidad, primer y último id) y por comparación de referencias.
+- **Mapeo incremental (desde `1.0.0.32`)**: cada fila formateada se guarda en `mappedRowCache` por `recordId` junto a la **referencia** del record del dataset. Si el record es el mismo objeto y la estructura (columnas + propiedades de formato + `DateFormat` + `Language`) no cambió, la fila se **reutiliza** sin volver a formatear (`reusedRows`). Se reformatea **todo** cuando cambia la estructura, cuando la app pide recargar (`invalidateMappedRows`, al pulsar *Actualizar*) o cuando el host revalida con `force` y la firma de filas no cambió. **No se usa `lodash.isEqual`**: la detección de cambios es por firma de filas (`loading`, cantidad, primer y último id) y por comparación de referencias.
 - **Texto buscable por fila (desde `1.0.0.32`)**: se calcula una sola vez por fila (minúsculas, todas las columnas, separadas por un salto de línea) en un `WeakMap` ligado a la propia fila; el buscador pasa de O(filas × columnas) a O(filas). El separador no puede escribirse en un buscador de una línea, así que el resultado es equivalente al filtro columna a columna.
 - **Identidad estable de props (desde `1.0.0.32`)**: `rowClassName`, `body` y `style` de cada columna, `virtualScrollerOptions`, `rowsPerPageOptions`, `globalFilterFields`, las props del pie, la plantilla del reporte y la selección se calculan una vez y se reutilizan; así vuelve a funcionar el `React.memo` interno de PrimeReact (`TableBody`/`BodyRow`/`BodyCell`) y no se repinta de más.
 - **Buscador aislado (`SearchBox`, desde `1.0.0.32`)**: el texto vive dentro del propio buscador, de modo que escribir **no** vuelve a pintar la cuadrícula; el control lo aplica con `searchDebounceMs` (200 ms) o al instante con `Enter`/salida del campo. `clearFilters()` fuerza la sincronización con `searchResetToken`.
@@ -899,7 +900,7 @@ Select-String -Path ModernDataGrid\ControlManifest.Input.xml -Pattern "=\"[^""]*
 5. El pie del paginador muestra `Mostrando X a Y registros · Filtrados: Z`.
 6. El buscador global filtra sobre todas las columnas y se combina con los filtros de columna.
 7. El botón de Excel descarga un `.xlsx` que abre en Excel sin advertencias y contiene lo filtrado.
-8. `FieldConfigurations` (heredada) y las propiedades dedicadas (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) se reflejan en los valores (moneda, decimales, Sí/No, fechas y horas); el combo global `DateFormat` sigue funcionando como último recurso.
+8. Las propiedades de formato (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) se reflejan en los valores (moneda, decimales, Sí/No, fechas y horas); el combo global `DateFormat` sigue funcionando como último recurso.
 9. `RowColorRules` colorea las filas (si no, revisa la consola del navegador).
 10. Al cambiar `Language` todos los textos (incluido el panel de filtro y el calendario de rango) cambian de idioma.
 11. Con `DisplayPagination = true` el pie navega entre páginas (y "anterior" siempre responde).
@@ -951,7 +952,8 @@ Son cifras de referencia del trabajo de CPU (no incluyen el DOM). En la app, la 
 
 ## 10. Limitaciones conocidas
 
-### 10.1 `FieldConfigurations` por columna — resuelto en `1.0.0.21`
+### 10.1 `FieldConfigurations` — resuelto en `1.0.0.21`, retirada en `1.0.0.37`
+Histórico: en `1.0.0.21` se corrigió para que se aplicara **por columna** (antes solo funcionaba con la última del texto). En `1.0.0.37` la propiedad se **eliminó** y su función quedó en las propiedades por tipo de dato (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`). Si una app la usaba, hay que mover los valores (§8.2).
 Hasta la `1.0.0.20` esta propiedad **no se aplicaba**: se entregaba a los manejadores el objeto completo (`{ columna: { clave: valor } }`) y ellos leían claves de primer nivel (`config.currency`, `config.dateFormat`, …), así que la configuración se ignoraba en silencio y siempre salían los valores por defecto.
 
 Desde la `1.0.0.21`, `getColumnConfiguration()` busca el bloque de cada columna (nombre, alias o nombre para mostrar, sin distinguir mayúsculas ni acentos) y los valores por defecto se siguen aplicando cuando no hay configuración. Verificado en las pruebas automáticas:
@@ -999,7 +1001,7 @@ El buscador, el selector de columnas, el **combo de vistas**, el refresco y la e
 | El combo de columnas se ve pequeño o con nombres | En `1.0.0.20` es un control de 2,5 rem de alto y **no muestra nombres**; si lo ves distinto, es una versión anterior o hay CSS del host interfiriendo |
 | Los colores de fila no se aplican | Revisa el nombre de la columna (nombre/alias/nombre para mostrar) y que el color sea válido; mira los avisos de la consola del navegador |
 | Los textos siguen en inglés | `Language = es` (o `Español` en el desplegable) |
-| Los formatos de fecha no cambian | Usa `DateFormats`, `DateTimeFormats` o `TimeFormats` (o `dateFormat` por columna en `FieldConfigurations`) con la versión `1.0.0.34` o superior. Si aplicas un patrón con hora a una columna de solo fecha verás `00:00` |
+| Los formatos de fecha no cambian | Usa `DateFormats` (solo fecha), `DateTimeFormats` (fecha y hora) o `TimeFormats` (solo hora) con la versión `1.0.0.37` o superior. Recuerda que cada propiedad **solo** se aplica si la columna es de ese tipo: si la pusiste en otra, se ignora (mira la consola) |
 | La moneda sale en USD aunque la configuré | Revisa el nombre de la columna en `CurrencyFormats` (nombre, alias, nombre para mostrar o etiqueta de `ColumnLabels`). Si usas la propiedad heredada, en `FieldConfigurations` con `currency` |
 | Los decimales no cambian de 2 posiciones | Igual que el caso anterior: `Columna=3` en `DecimalFormats`, `Columna=3|grouping:false` en `NumberFormats` o `decimalPlaces:3` en `FieldConfigurations` |
 | El filtro de una columna de fecha no es una caja de texto | Es lo esperado desde `1.0.0.34`: en las columnas de fecha y fecha y hora el embudo abre un **calendario de rango** (§7.2) |
@@ -1028,10 +1030,10 @@ El buscador, el selector de columnas, el **combo de vistas**, el refresco y la e
 Hoy no: por petición, el pie muestra la **cantidad filtrada**. Volver a mostrar el total implicaría usar `paging.totalResultCount` en la plantilla del paginador.
 
 **¿Cómo uso dos formatos de fecha distintos en la misma grilla?**
-Con las propiedades por columna: `DateFormats` (`Fecha=dd/MM/yyyy`), `DateTimeFormats` (`Creado=dd/MM/yyyy HH:mm`) y `TimeFormats` (`HoraInicio=HH:mm`). La propiedad heredada `FieldConfigurations` (`Fecha=dateFormat:dd/MM/yyyy`) también sirve y sigue teniendo prioridad sobre el combo global `DateFormat`.
+Con las propiedades por columna: `DateFormats` (`Fecha=dd/MM/yyyy`), `DateTimeFormats` (`FechaSolicitud=dd/MM/yyyy HH:mm`) y `TimeFormats` (`HoraInicio=HH:mm`). Cada una se aplica **solo** a las columnas de su tipo de dato; si te equivocas de propiedad, ese formato simplemente no se aplica.
 
-**¿Puedo aplicar un patrón de fecha que no esté en el combo?**
-Sí: `DateFormats`, `DateTimeFormats` y `TimeFormats` aceptan **cualquier patrón de fecha válido**, no solo los 36 del combo (por ejemplo `Cita=EEEE d de MMMM de yyyy HH:mm`). En `FieldConfigurations` también funciona la clave `dateFormat`.
+**¿Puedo aplicar un patrón de fecha que no esté en el catálogo?**
+Sí: `DateFormats`, `DateTimeFormats` y `TimeFormats` aceptan **cualquier patrón de fecha válido** (por ejemplo `Cita=EEEE d de MMMM de yyyy HH:mm`); el catálogo de §8.3 solo lista ejemplos y tokens cortos.
 
 **¿Cómo filtro por un rango de fechas?**
 Con `AllowFiltering = true`, pulsa el embudo de una columna de fecha o de fecha y hora: se abre un **calendario de rango**. Elige el día inicial y el final (ambos incluidos) y la grilla, el pie y el Excel quedan filtrados a ese rango (§7.2).
@@ -1088,6 +1090,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.37` / `0.0.50` | **Un formato por tipo de fecha y aplicación estricta por tipo de dato.** (1) Se **retira** el combo global `DateFormat` (36 opciones): los formatos de fecha quedan en **tres** propiedades, una por tipo de dato: `DateFormats` (columnas de solo fecha), `DateTimeFormats` (columnas de fecha y hora) y `TimeFormats` (columnas de solo hora). (2) Cada propiedad se aplica **automáticamente solo a las columnas de su tipo**: si la columna escrita no es de ese tipo (por ejemplo una columna de fecha y hora puesta en `DateFormats`, o una columna de texto), el formato **no se aplica** y la columna se queda con el valor por defecto de su tipo (`yyyy-MM-dd`, `yyyy-MM-dd HH:mm:ss` o `HH:mm:ss`); la consola lo avisa una vez por columna y propiedad. No hay cadenas de respaldo entre propiedades, así que un error de ubicación nunca cambia el formato de otra columna. (3) Las propiedades `DateFormats`, `DateTimeFormats` y `TimeFormats` aceptan el patrón escrito tal cual (el espacio entre fecha y hora es un carácter literal: `dd/MM/yyyy HH:mm`) o un token del catálogo de §8.3. (4) Se mantienen `CurrencyFormats`, `NumberFormats`, `DecimalFormats` y `BooleanLabels` (no son formatos de fecha). (5) En esta misma entrega se retira la propiedad heredada `FieldConfigurations`, la selección de columnas pasa a llamarse `CamposVisibles` (*Campos visibles*) y su selector lista todas las columnas del dataset con su tipo de dato. Sin cambios en dataset, buscador, filtros (rango de fechas incluido), vistas, paginación, selección, colores ni exportación |
 | `1.0.0.35` / `0.0.48` | **Barra en una sola fila, más compacta, y selector de columnas completo.** (1) La barra ya no se reparte en varias líneas: título + combo de vistas + selector de columnas + buscador + botones van en **una sola fila** (`flex-wrap: nowrap`), con controles de `2.25rem` de alto, iconos de `1rem`, menos separación y un título que se recorta con puntos suspensivos si falta espacio. (2) El **selector de columnas** (Mostrar u ocultar columnas) ahora lista **todas las columnas del dataset** (antes, si `InitialColumns` estaba definido, la lista se limitaba a esas columnas y podía parecer incompleto), muestra el **tipo de dato** de cada columna (Texto, Fecha y hora, Número, Moneda, Sí/No, Opción, Correo…, traducido al idioma del control) y añade al pie los botones **Todas** y **Quitar todas** (desmarca todo; con *Todas* se vuelve a marcar). El disparador es cuadrado, solo con su icono. (3) `InitialColumns` pasa a definir únicamente las columnas **visibles al abrir** y ya no limita lo que el usuario puede mostrar; si su texto no coincide con ninguna columna, la consola lo avisa y se muestran todas. (4) Nuevo helper `helpers/ColumnTypes.ts` con el nombre traducido del tipo de dato. Sin cambios en dataset, buscador, filtros (rango de fechas incluido), vistas, paginación, selección, colores ni exportación |
 | `1.0.0.34` / `0.0.47` | **Propiedades de formato separadas, filtro por rango de fechas y vistas (informes).** (1) `FieldConfigurations` se acompaña de propiedades dedicadas por tipo de formato: `CurrencyFormats` (moneda, `locale`, `decimals`), `DateFormats` (solo fecha), `DateTimeFormats` (fecha y hora), `TimeFormats` (solo hora), `NumberFormats` (decimales, separador de miles e idioma regional), `DecimalFormats` (atajo de decimales) y `BooleanLabels` (etiquetas Sí/No). Aceptan token del combo o patrón libre y tienen **prioridad** sobre `FieldConfigurations`, que se mantiene por compatibilidad; el combo global `DateFormat` queda como último recurso. (2) En las columnas de **fecha y fecha y hora** el filtro del embudo pasa a ser un **selector de rango de fechas** (calendario con día inicial y final, ambos incluidos, con *Hoy* y *Limpiar*); el rango se evalúa contra la fecha real del registro y se respeta en la exportación a Excel, así que funciona con cualquier formato visible. (3) Nueva propiedad **`Views`**: vistas/informes en JSON (nombre, descripción, columnas, títulos, filtros, orden, archivo y hoja) que el usuario final elige en un **combo junto al selector de columnas**; al elegir una vista la grilla cambia de columnas, títulos, filtros y orden, el Excel usa su archivo y su hoja, y los filtros manuales se suman a los de la vista. Incluye operadores `=`, `!=`, `%…%`, `…%`, `%…`, `>`, `>=`, `<`, `<=` y análisis tolerante (JSON estricto o formato de objeto con `;` y claves sin comillas). (4) Corregido el **tooltip de los botones de la barra** (el texto salía amontonado): ahora tiene ancho de lectura, interlineado y salto de palabra. (5) Rendimiento: los formatos se analizan una vez por cambio, la vista compilada y sus opciones se memoizan, el rango de fechas usa un campo oculto con la fecha en milisegundos y el modelo de filtros sigue indexado por columna (sin recorridos extra por fila). (6) El orden de las columnas de fecha y fecha y hora pasa a ser **cronológico** (se ordena por la fecha real, no por el texto de la celda), tanto al pulsar el encabezado como al aplicar `ordenarPor` de una vista. Sin cambios de comportamiento en lo que ya funcionaba (dataset, buscador, paginación, selección, colores, Excel estándar) |
 | `1.0.0.33` / `0.0.46` | **Corregido: las páginas se veían en blanco (o parpadeando) a partir de la segunda/tercera.** PrimeReact no combina paginador con scroll virtual: el `DataTable` vuelve a recortar con `dataToRender` el trozo que ya había recortado el `VirtualScroller`, de modo que toda página posterior al viewport (~40 filas) quedaba vacía. Ahora el **scroll virtual se usa solo cuando el paginador está desactivado** (`DisplayPagination = false`, lista completa virtualizada); con el paginador activo se renderizan únicamente las filas de la página (`Default Rows`), que es más rápido y evita el parpadeo. No cambia propiedades ni el resto del comportamiento |

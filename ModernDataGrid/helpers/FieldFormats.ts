@@ -1,9 +1,8 @@
 /**
  * Formatos de valores por columna.
  *
- * La propiedad combinada `FieldConfigurations` se acompaña ahora de propiedades
- * dedicadas (una por tipo de formato), de modo que cada valor se configure por
- * separado en el panel de propiedades de la app:
+ * Una propiedad dedicada por tipo de formato, de modo que cada valor se configure
+ * por separado en el panel de propiedades de la app:
  *
  *   CurrencyFormats → Importe=EUR, Precio=USD|locale:en-US
  *   DateFormats     → Fecha=dd/MM/yyyy              (columnas de solo fecha)
@@ -13,8 +12,13 @@
  *   DecimalFormats  → Cantidad=3                    (atajo de solo decimales)
  *   BooleanLabels   → Activo=Sí|No
  *
- * Precedencia por columna: propiedad dedicada → `FieldConfigurations` → valor por
- * defecto del tipo de dato. `FieldConfigurations` sigue funcionando igual que antes.
+ * Cada propiedad se aplica **solo** a las columnas de su tipo de dato: la columna que
+ * aparezca en la propiedad de otro tipo se ignora (con un aviso en la consola) en lugar
+ * de recibir un formato que no corresponde. Cuando no hay formato, se usa el valor por
+ * defecto del tipo de dato.
+ *
+ * Propiedades heredadas retiradas: `FieldConfigurations` (`1.0.0.37`) y el combo global
+ * `DateFormat` (`1.0.0.37`).
  */
 import { resolveDatePattern } from './DateFormat';
 import { normalizeText } from './Utils';
@@ -49,9 +53,8 @@ export interface BooleanLabelEntry {
     falseLabel: string;
 }
 
-/** Texto sin analizar de las propiedades de formato (dedicadas y heredada). */
+/** Texto sin analizar de las propiedades de formato. */
 export interface FormatPropertyValues {
-    fieldConfigurations?: string | null;
     currencyFormats?: string | null;
     dateFormats?: string | null;
     dateTimeFormats?: string | null;
@@ -63,7 +66,6 @@ export interface FormatPropertyValues {
 
 /** Propiedades ya analizadas: se conservan hasta que cambie alguno de sus textos. */
 export interface ParsedFormatProperties {
-    legacy: Record<string, any>;
     currency: FormatAssignmentMap;
     date: FormatAssignmentMap;
     dateTime: FormatAssignmentMap;
@@ -73,7 +75,7 @@ export interface ParsedFormatProperties {
     boolean: { [identifier: string]: BooleanLabelEntry };
 }
 
-/** Formato efectivo de una columna, ya mezclado con la compatibilidad heredada. */
+/** Formato efectivo de una columna. */
 export interface ColumnFormat {
     currency: string;
     currencyLocale?: string;
@@ -218,52 +220,9 @@ export function parseBooleanLabels(raw?: string | null): { [identifier: string]:
     return labels;
 }
 
-/**
- * Analiza la propiedad heredada `FieldConfigurations`
- * (`columna=clave:valor|clave:valor, otraColumna=…`). Se mantiene tal cual para no
- * romper las apps que ya la usan.
- */
-export function parseLegacyFieldConfigurations(raw?: string | null): Record<string, any> {
-    const configs: Record<string, any> = {};
-
-    try {
-        (raw || '').split(ENTRY_SEPARATOR).forEach((field) => {
-            const separatorIndex = field.indexOf('=');
-
-            if (separatorIndex === -1) {
-                return;
-            }
-
-            const fieldName = field.substring(0, separatorIndex);
-            const config = field.substring(separatorIndex + 1);
-
-            if (!fieldName || !config) {
-                return;
-            }
-
-            const configObject = config.split(OPTION_SEPARATOR).reduce((acc, pair) => {
-                const colonIndex = pair.indexOf(KEY_SEPARATOR);
-
-                if (colonIndex > 0) {
-                    acc[pair.substring(0, colonIndex).trim()] = pair.substring(colonIndex + 1).trim();
-                }
-
-                return acc;
-            }, {} as Record<string, any>);
-
-            configs[fieldName.trim()] = configObject;
-        });
-    } catch (error) {
-        console.error('Error parsing FieldConfigurations:', error);
-    }
-
-    return configs;
-}
-
 /** Analiza de una sola vez todas las propiedades de formato. */
 export function parseFormatProperties(values: FormatPropertyValues): ParsedFormatProperties {
     return {
-        legacy: parseLegacyFieldConfigurations(values.fieldConfigurations),
         currency: parseFormatAssignments(values.currencyFormats),
         date: parseFormatAssignments(values.dateFormats),
         dateTime: parseFormatAssignments(values.dateTimeFormats),
@@ -277,7 +236,6 @@ export function parseFormatProperties(values: FormatPropertyValues): ParsedForma
 /** Firma de los textos de formato: cambia solo cuando hay que reformatear las filas. */
 export function formatPropertySignature(values: FormatPropertyValues): string {
     return [
-        values.fieldConfigurations || '',
         values.currencyFormats || '',
         values.dateFormats || '',
         values.dateTimeFormats || '',
@@ -322,49 +280,114 @@ export function isTimeOnlyDataType(dataType?: string): boolean {
     return dataType === 'DateAndTime.TimeOnly';
 }
 
+/** true para las columnas de fecha y hora (no solo fecha ni solo hora). */
+export function isDateTimeDataType(dataType?: string): boolean {
+    return isDateDataType(dataType) && !isDateOnlyDataType(dataType) && !isTimeOnlyDataType(dataType);
+}
+
+/** Avisos ya emitidos: una columna en la propiedad de otro tipo se avisa una sola vez. */
+const wrongTypeWarnings = new Set<string>();
+
 /**
- * Formato efectivo de una columna: mezcla las propiedades dedicadas con la
- * propiedad heredada `FieldConfigurations`.
+ * Avisa (una sola vez por columna y propiedad) cuando una columna aparece en una
+ * propiedad de formato que no corresponde a su tipo de dato, porque ese formato se
+ * ignora. Es la red de seguridad para una columna mal escrita.
+ */
+function warnWrongType(
+    propertyName: string,
+    map: FormatAssignmentMap,
+    column: FormatColumn,
+    dataType: string
+): void {
+    if (!findFormatEntry(map, column)) {
+        return;
+    }
+
+    const key = `${propertyName}|${column.name}`;
+
+    if (wrongTypeWarnings.has(key)) {
+        return;
+    }
+
+    wrongTypeWarnings.add(key);
+    console.warn(
+        `Formatos: la columna "${column.name}" está en ${propertyName} pero su tipo de dato es "${dataType}"; ese formato no se aplica.`
+    );
+}
+
+/**
+ * Entrada de fecha que corresponde a la columna **por su tipo de dato**:
+ * `DateFormats` para solo fecha, `DateTimeFormats` para fecha y hora y
+ * `TimeFormats` para solo hora. La columna que esté en la propiedad de otro tipo
+ * se ignora (con un aviso en la consola) en lugar de aplicarle un formato que no
+ * corresponde.
+ */
+function findDateAssignment(
+    dataType: string,
+    column: FormatColumn,
+    properties: ParsedFormatProperties
+): FormatAssignment | undefined {
+    if (isDateOnlyDataType(dataType)) {
+        warnWrongType('DateTimeFormats', properties.dateTime, column, dataType);
+        warnWrongType('TimeFormats', properties.time, column, dataType);
+
+        return findFormatEntry(properties.date, column);
+    }
+
+    if (isTimeOnlyDataType(dataType)) {
+        warnWrongType('DateFormats', properties.date, column, dataType);
+        warnWrongType('DateTimeFormats', properties.dateTime, column, dataType);
+
+        return findFormatEntry(properties.time, column);
+    }
+
+    if (isDateTimeDataType(dataType)) {
+        warnWrongType('DateFormats', properties.date, column, dataType);
+        warnWrongType('TimeFormats', properties.time, column, dataType);
+
+        return findFormatEntry(properties.dateTime, column);
+    }
+
+    // No es una columna de fecha: se revisan las tres propiedades solo para avisar.
+    warnWrongType('DateFormats', properties.date, column, dataType);
+    warnWrongType('DateTimeFormats', properties.dateTime, column, dataType);
+    warnWrongType('TimeFormats', properties.time, column, dataType);
+
+    return undefined;
+}
+
+/**
+ * Formato efectivo de una columna a partir de las propiedades dedicadas.
  *
- * Para las columnas de fecha la precedencia es: `DateTimeFormats` (fecha y hora),
- * `DateFormats` (solo fecha, y respaldo de las demás), `TimeFormats` (solo hora),
- * `FieldConfigurations` (`dateFormat`) y, por último, el combo global `DateFormat`.
+ * El formato de fecha se toma **solo** de la propiedad que corresponde al tipo de
+ * dato de la columna (`DateFormats` / `DateTimeFormats` / `TimeFormats`); cuando no
+ * hay formato, se usa el valor por defecto del tipo (`yyyy-MM-dd`,
+ * `yyyy-MM-dd HH:mm:ss` o `HH:mm:ss`) y las demás propiedades no lo sobrescriben.
  */
 export function buildColumnFormat(
     dataType: string,
     column: FormatColumn,
     properties: ParsedFormatProperties
 ): ColumnFormat {
-    const legacy = findFormatEntry(properties.legacy, column) || {};
     const currency = findFormatEntry(properties.currency, column);
     const number = findFormatEntry(properties.number, column);
     const decimal = findFormatEntry(properties.decimal, column);
     const boolean = findFormatEntry(properties.boolean, column);
-    const dateAssignments = isTimeOnlyDataType(dataType)
-        ? [findFormatEntry(properties.time, column)]
-        : isDateOnlyDataType(dataType)
-        ? [findFormatEntry(properties.date, column)]
-        : [findFormatEntry(properties.dateTime, column), findFormatEntry(properties.date, column)];
-    const dateValue = dateAssignments.reduce<string | undefined>(
-        (current, assignment) => current || (assignment && assignment.value ? assignment.value : undefined),
-        undefined
-    );
-    const legacyDatePattern = legacy.dateFormat ? String(legacy.dateFormat) : undefined;
+    const dateAssignment = findDateAssignment(dataType, column, properties);
 
     return {
-        currency: (currency && currency.value) || (legacy.currency ? String(legacy.currency) : ''),
+        currency: (currency && currency.value) || '',
         currencyLocale: currency?.options.locale,
         currencyDecimals: toNumber(currency?.options.decimals),
-        datePattern: resolveDatePattern(dateValue) || resolveDatePattern(legacyDatePattern),
+        datePattern: resolveDatePattern(dateAssignment && dateAssignment.value),
         decimalPlaces:
             toNumber(decimal?.value) ??
             toNumber(decimal?.options.decimals) ??
             toNumber(number?.value) ??
-            toNumber(number?.options.decimals) ??
-            toNumber(legacy.decimalPlaces),
+            toNumber(number?.options.decimals),
         numberLocale: number?.options.locale,
         numberGrouping: toBoolean(number?.options.grouping),
-        trueLabel: (boolean && boolean.trueLabel) || legacy.trueLabel,
-        falseLabel: (boolean && boolean.falseLabel) || legacy.falseLabel
+        trueLabel: boolean && boolean.trueLabel,
+        falseLabel: boolean && boolean.falseLabel
     };
 }

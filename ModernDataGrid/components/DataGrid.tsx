@@ -14,9 +14,8 @@ import { SearchIcon } from 'primereact/icons/search';
 import { FilterSlashIcon } from 'primereact/icons/filterslash';
 import { endOfDay, startOfDay } from 'date-fns';
 import { IInputs } from "../generated/ManifestTypes";
-import { formatDate, getAvailableDatePatterns, normalizeText, toEpochMs } from '../helpers/Utils';
+import { formatDate, normalizeText, toEpochMs } from '../helpers/Utils';
 import { exportRowsToExcel } from '../helpers/ExcelExport';
-import { resolveDatePattern } from '../helpers/DateFormat';
 import {
     buildColumnFormat,
     ColumnFormat,
@@ -284,9 +283,9 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     /** Columnas base y visibles memoizadas. */
     private baseColumnsCache: { source: any[]; columns: any[] } | null = null;
     private visibleColumnsCache: { base: any[]; selected: string[] | null; columns: any[] } | null = null;
-    /** Nombres de InitialColumns memoizados por su texto. */
+    /** Nombres de la propiedad `CamposVisibles` memoizados por su texto. */
     private initialColumnsCache: { raw: string; names: string[] } | null = null;
-    /** Selección inicial de columnas (a partir de InitialColumns), memoizada. */
+    /** Selección inicial de columnas (a partir de `CamposVisibles`), memoizada. */
     private initialSelectionCache: { key: string; names: string[] | null } | null = null;
     /** Opciones del selector de columnas (nombre + tipo de dato), memoizadas. */
     private columnOptionsCache: {
@@ -501,7 +500,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     ): string {
         return [
             this.getFormatSignature(context),
-            context.parameters.DateFormat?.raw || "",
             context.parameters.Language?.raw || "",
             this.getColumnsSchemaKey(dataSet.columns)
         ].join(";");
@@ -707,11 +705,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         return formatter.format(value);
     }
 
-    /** Patrón de fecha global de la propiedad DateFormat (undefined = predeterminado por tipo). */
-    getGlobalDateFormat(): string | undefined {
-        return resolveDatePattern(this.props.context.parameters.DateFormat?.raw);
-    }
-
     /** Modelo de filtro inicial de una columna: rango de fechas en las columnas de fecha. */
     createColumnFilter(column: { name: string; dataType?: string }): any {
         return {
@@ -756,12 +749,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         return this.getColumnMeta().dataTypes[columnName];
     }
 
-    /** Texto actual de las propiedades de formato (dedicadas y heredada). */
+    /** Texto actual de las propiedades de formato. */
     getFormatPropertyValues(context: ComponentFramework.Context<IInputs>): FormatPropertyValues {
         const parameters = context.parameters;
 
         return {
-            fieldConfigurations: parameters.FieldConfigurations?.raw,
             currencyFormats: parameters.CurrencyFormats?.raw,
             dateFormats: parameters.DateFormats?.raw,
             dateTimeFormats: parameters.DateTimeFormats?.raw,
@@ -998,29 +990,29 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
       mapRecordsToState(force = false) {
         const { context } = this.props;
         const dataSet = context.parameters.DataSource as ComponentFramework.PropertyTypes.DataSet;
-        // Formatos por columna: propiedades dedicadas + compatibilidad con FieldConfigurations.
+        // Formatos por columna: una propiedad dedicada por tipo de formato. El formato de
+        // fecha solo se aplica si la columna es del tipo de esa propiedad.
         const formatProperties = this.getParsedFormatProperties();
         const labels = this.getColumnLabels();
-        const globalDateFormat = this.getGlobalDateFormat();
 
         const typeHandlers: Record<string, (value: any, config: ColumnFormat, context: ComponentFramework.Context<IInputs>) => any> = {
             "Currency": (value, config) => this.formatCurrency(value, config.currency || "USD", config),
             "DateAndTime.DateAndTime": (value, config, ctx) =>
               formatDate(
                 new Date(value),
-                config.datePattern || globalDateFormat || "yyyy-MM-dd HH:mm:ss",
+                config.datePattern || "yyyy-MM-dd HH:mm:ss",
                 ctx
               ),
             "DateAndTime.DateOnly": (value, config, ctx) =>
               formatDate(
                 new Date(value),
-                config.datePattern || globalDateFormat || "yyyy-MM-dd",
+                config.datePattern || "yyyy-MM-dd",
                 ctx
               ),
             "DateAndTime.TimeOnly": (value, config, ctx) =>
               formatDate(
                 new Date(value),
-                config.datePattern || globalDateFormat || "HH:mm:ss",
+                config.datePattern || "HH:mm:ss",
                 ctx
               ),
             "Decimal": (value, config) => this.formatDecimal(value, config.decimalPlaces, config),
@@ -1033,8 +1025,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
           };
         const dateFallbackHandler = typeHandlers["DateAndTime.DateAndTime"];
 
-        //const dateFormat = context.parameters.DateFormat?.raw || availablePatterns[0] || "yyyy-MM-dd";
-        //const fieldConfigs = JSON.parse(context.parameters.FieldConfigurations?.raw || "{}");
         //console.log('Starting mapRecordsToState...');
         if (!dataSet) {
             //console.log('DataSet is undefined.');
@@ -1259,7 +1249,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             // Nota: cuando solo llegan filas nuevas, el `setState` del mapeo ya repinta (las filas
             // nuevas son instancias nuevas y `shouldComponentUpdate` lo detecta); el `forceUpdate`
             // que había aquí provocaba un segundo render completo por cada página.
-            //this.setState({ previousFieldConfigurations: currentFieldConfigurations });
         }
 
         if (!this.areColumnsEqual(prevState.columns, dataSet.columns)) {
@@ -1483,9 +1472,9 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.requestWholeSource();
     };
 
-    /** Nombres de InitialColumns normalizados (memoizados por el texto de la propiedad). */
+    /** Nombres de la propiedad `CamposVisibles` normalizados (memoizados por su texto). */
     getInitialColumnNames(): string[] {
-        const raw = this.props.context.parameters.InitialColumns?.raw || '';
+        const raw = this.props.context.parameters.CamposVisibles?.raw || '';
 
         if (this.initialColumnsCache?.raw === raw) {
             return this.initialColumnsCache.names;
@@ -1544,7 +1533,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     }
 
     /**
-     * Selección inicial de columnas a partir de `InitialColumns` (nombre lógico, alias,
+     * Selección inicial de columnas a partir de `CamposVisibles` (nombre lógico, alias,
      * nombre para mostrar o etiqueta). `null` = se muestran todas.
      *
      * El selector de columnas siempre ofrece **todas** las columnas del dataset; esta
@@ -1552,7 +1541,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
      * o desmarcar cualquier otra.
      */
     getInitialSelection(): string[] | null {
-        const raw = this.props.context.parameters.InitialColumns?.raw || '';
+        const raw = this.props.context.parameters.CamposVisibles?.raw || '';
 
         if (!raw.trim()) {
             return null;
@@ -1577,7 +1566,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
         if (!names.length) {
             console.warn(
-                `InitialColumns: ninguna columna coincide con "${raw}"; se muestran todas las columnas.`
+                `Campos visibles: ninguna columna coincide con "${raw}"; se muestran todas las columnas.`
             );
             this.initialSelectionCache = { key, names: null };
 

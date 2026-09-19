@@ -1,12 +1,11 @@
 /**
- * Catálogo de patrones de fecha de la propiedad `DateFormat`.
+ * Catálogo de patrones de fecha que admiten las propiedades `DateFormats`,
+ * `DateTimeFormats` y `TimeFormats`.
  *
- * `token` es el valor que viaja desde el manifest (solo letras, dígitos, guiones
- * bajos, guiones y puntos, para que sea un nombre de opción seguro) y `pattern`
- * es el patrón real que se aplica con date-fns.
- *
- * Mantener sincronizado con `ControlManifest.Input.xml`: la prueba automática
- * compara los tokens del manifest con esta lista.
+ * `token` es un nombre corto y seguro (solo letras, dígitos, guiones bajos, guiones y
+ * puntos) que se puede escribir en esas propiedades y `pattern` es el patrón real que
+ * se aplica con date-fns. Las propiedades también aceptan **cualquier patrón de fecha
+ * escrito directamente**, así que este catálogo es una ayuda, no una lista cerrada.
  */
 
 export type DateFormatGroup = 'date' | 'dateTime' | 'time';

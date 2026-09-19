@@ -19,8 +19,8 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - `ModernDataGrid/helpers/ExcelExport.ts`: dependency-free XLSX writer (the OPC/ZIP container is built by hand).
 - `ModernDataGrid/helpers/RowColoring.ts`: parser and compiler of the row color rules.
 - `ModernDataGrid/helpers/Localization.ts`: `en`/`es` strings and the Spanish PrimeReact locale.
-- `ModernDataGrid/helpers/DateFormat.ts`: catalog of the `DateFormat` property (token -> date-fns pattern) plus `resolveDatePattern()` (token or literal pattern). Keep it in sync with the manifest enum.
-- `ModernDataGrid/helpers/FieldFormats.ts`: per-column formats (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) merged with the legacy `FieldConfigurations`.
+- `ModernDataGrid/helpers/DateFormat.ts`: catalog of the date patterns (`DateFormats`/`DateTimeFormats`/`TimeFormats`) plus `resolveDatePattern()` (token or literal pattern).
+- `ModernDataGrid/helpers/FieldFormats.ts`: per-column formats (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) with strict matching by column data type.
 - `ModernDataGrid/helpers/Views.ts`: `Views` property (views/reports): tolerant JSON parsing, filter grammar (`=`, `!=`, `%…%`, `>`, `>=`, `<`, `<=`), column/title resolution and the exported file name/sheet.
 - `ModernDataGrid/helpers/ColumnTypes.ts`: translated name of each column data type (shown in the column selector).
 - `ModernDataGrid/helpers/ColumnLabels.ts`: display-name overrides for column headers (`ColumnLabels`).
@@ -37,7 +37,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.35`
+- Solution version: `1.0.0.37`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -51,25 +51,23 @@ The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `
 - Column filters controlled through `filters` and `onFilter`; keep this callback when editing filters.
 - Manual refresh button that resets paging and calls `DataSource.refresh()`.
 - The pagination report shows the visible range plus the **filtered** count (`Mostrando 51 a 54 registros · Filtrados: 54`), not the database total.
-- `InitialColumns` property: comma-separated column names, aliases, or display names; empty means all columns.
+- `CamposVisibles` property: comma-separated column names, aliases, display names or `ColumnLabels` labels; empty means all columns (it only sets the initial visible set).
 - Internal horizontal and vertical scrolling constrained to the PCF host dimensions.
 - Managed and unmanaged solution packaging.
-- Field formatting through `FieldConfigurations`.
-- Per-column formats split by concern (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`), all of which take precedence over `FieldConfigurations`.
+- Per-column formats split by concern (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`). The three date properties apply **only** to columns whose data type matches them.
 - Date and date-and-time columns filter through an inline **range calendar** (`between`, both endpoints included) backed by the hidden milliseconds field.
 - `Views` property: a combo next to the column selector applies ready-made reports (columns, titles, filters, sorting, exported file and sheet).
 - Column selector for the end user: lists every data set column with its translated data type, plus **Select all** / **Clear all** buttons in the panel footer.
 - Toolbar on a single compact row (title truncates, the search box shrinks).
 - Per-column filters use the `menu` display: the funnel icon opens a panel with the search input and `Contains` as the default match mode.
-- Column selector in the toolbar: the end user can show or hide any column available in the dataset. `InitialColumns` still defines the starting set and stays respected.
+- Column selector in the toolbar: the end user can show or hide any column available in the dataset. `CamposVisibles` defines the starting set and stays respected.
 - Excel export button in the toolbar: writes a real `.xlsx` (generated in `helpers/ExcelExport.ts`) with the rows currently matching the global search and the per-column filters, using the visible columns only.
 - Sorting stays delegated to PrimeReact through the `sortable` columns and the `AllowSorting` property.
 - `Language` property (`Enum`: `en`/`es`) translates the control texts and the PrimeReact internals (filter panel, match modes, paginator, column selector).
 - The column selector trigger shows only its icon: no chips and no label, so the toolbar never overflows.
 - The toolbar wraps (`flex-wrap`) and every toolbar control is 2.5rem tall, so nothing is ever pushed out of view; all toolbar icons (search, refresh, Excel) are inline SVG and the control no longer depends on the PrimeIcons font.
 - `RowColorRules` property: colors the whole row from a column value (`columna=valor:#fondo[:texto]|valor:#fondo`, `~` for contains, `*` for any value).
-- `FieldConfigurations` applies **per column** (resolved by name, alias or display name); it sets currency, decimal places, Yes/No labels and `dateFormat`.
-- `DateFormat` property: 36-option combo (date, date+time and time patterns) applied to every date column; a column `dateFormat` wins over it.
+- Per-column formats: the column is matched by name, alias, display name or `ColumnLabels` label with `normalizeText()` (case, accents and outer spaces ignored). `CurrencyFormats` sets the currency, `NumberFormats`/`DecimalFormats` the decimals and locale, `BooleanLabels` the Yes/No labels and the three date properties the date patterns.
 - `ColumnLabels` property: display names for the end user (`columna=Nombre`); applied to the grid header, the Excel header, the filter placeholder and the column selector, and usable as a column identifier in the other config properties.
 - Clear filters button: resets the global search and every column filter and goes back to page 1; it is disabled while nothing is filtered.
 - Pagination over the loaded rows (never depends on `totalResultCount`) plus an extra page while the source has more rows: asking for it calls `loadNextPage()` and the view jumps when the rows arrive. Missing source pages are also loaded automatically (capped at 2000 rows).
@@ -128,17 +126,19 @@ estado=Activo:#DFF6DD|Pendiente:#FFF4CE:#7A4F01, prioridad=~alta:#FDE7E9, ciudad
 
 ## Value Formatting
 
-`FieldConfigurations` is resolved **per column** by `getColumnConfiguration()`: the column is matched by name, alias or display name with `normalizeText()` (case, accents and outer spaces ignored) and the matched block is what the type handler receives. Without a block the handler falls back to its defaults (`USD`, 2 decimals, `Yes`/`No`, `yyyy-MM-dd` / `yyyy-MM-dd HH:mm:ss`).
+Formats are resolved **per column** by `helpers/FieldFormats.ts`: the column is matched by name, alias, display name or `ColumnLabels` label with `normalizeText()` (case, accents and outer spaces ignored). Without an entry the type handler falls back to its defaults (`USD`, 2 decimals, `Yes`/`No`, `yyyy-MM-dd` / `yyyy-MM-dd HH:mm:ss` / `HH:mm:ss`).
 
-The `DateFormat` property is the global fallback for date columns and comes from `helpers/DateFormat.ts`:
+Date patterns come only from the property that matches the column data type:
 
 ```ts
-resolveDateFormat(context.parameters.DateFormat?.raw) // token -> date-fns pattern, undefined for "default"
+DateFormats     -> DateAndTime.DateOnly      // e.g. Fecha=dd/MM/yyyy
+DateTimeFormats -> DateAndTime.DateAndTime   // e.g. FechaSolicitud=dd/MM/yyyy HH:mm
+TimeFormats     -> DateAndTime.TimeOnly      // e.g. HoraInicio=HH:mm
 ```
 
-Order of precedence for dates: column `dateFormat` -> `DateFormat` -> built-in default.
+A column listed under a property of another type is **ignored** (`findDateAssignment()` returns nothing and warns once), so a typo never changes a format. The value can be a literal pattern (the space between date and time is a literal character: `dd/MM/yyyy HH:mm`) or a token from `DATE_FORMAT_OPTIONS` in `helpers/DateFormat.ts` (resolved by `resolveDatePattern()`).
 
-The manifest enum and `DATE_FORMAT_OPTIONS` must stay identical (same tokens, same order); the automated check compares both lists and validates every pattern against date-fns. Values are formatted **before** filtering, row coloring and export, so a format change also changes what those features see.
+Values are formatted **before** filtering, row coloring and export, so a format change also changes what those features see.
 
 ## Column Labels
 
@@ -224,7 +224,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.35`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.37`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -237,7 +237,9 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.48`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.50`, is separate from the four-part Dataverse solution version.
+
+Date formats are configured in exactly three properties (`DateFormats`, `DateTimeFormats`, `TimeFormats`) and each one applies **only** to columns whose data type matches it: `buildColumnFormat()` resolves the pattern with `findDateAssignment()` and ignores (with a one-off console warning) a column listed in a property of another type, so a mistake never changes another column's format. There is no global date-format property (the `DateFormat` enum was removed in `0.0.50`).
 
 Keep the column selector (`Mostrar u ocultar columnas`) listing **every** data set column: `getBaseColumns()` must never be narrowed by `InitialColumns` (that property only defines the initial selection, resolved by `getInitialSelection()`), otherwise views can lose columns and the selector looks incomplete. The toolbar must stay on a single row (`flex-wrap: nowrap` overrides the PrimeFlex `!important` utilities, so the override needs `!important` too).
 
