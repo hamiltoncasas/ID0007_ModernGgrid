@@ -27,6 +27,7 @@ import {
     parseFormatProperties
 } from '../helpers/FieldFormats';
 import { resolveColumnLabels } from '../helpers/ColumnLabels';
+import { describeColumnType } from '../helpers/ColumnTypes';
 import {
     buildViewFileName,
     compileView,
@@ -281,10 +282,17 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     /** Clave de columnas del dataset memoizada por identidad del arreglo de columnas. */
     private columnsSchemaCache: { source: any[]; key: string } | null = null;
     /** Columnas base y visibles memoizadas. */
-    private baseColumnsCache: { source: any[]; raw: string; columns: any[] } | null = null;
+    private baseColumnsCache: { source: any[]; columns: any[] } | null = null;
     private visibleColumnsCache: { base: any[]; selected: string[] | null; columns: any[] } | null = null;
     /** Nombres de InitialColumns memoizados por su texto. */
     private initialColumnsCache: { raw: string; names: string[] } | null = null;
+    /** Selección inicial de columnas (a partir de InitialColumns), memoizada. */
+    private initialSelectionCache: { key: string; names: string[] | null } | null = null;
+    /** Opciones del selector de columnas (nombre + tipo de dato), memoizadas. */
+    private columnOptionsCache: {
+        key: string;
+        options: Array<{ label: string; value: string; type: string }>;
+    } | null = null;
     /** Firma de los filtros memoizada por identidad del objeto (sustituye a JSON.stringify repetidos). */
     private filtersSignatureCache: { source: any; signature: string } | null = null;
     /** Clave de las reglas de color memoizada (texto + columnas del dataset). */
@@ -343,7 +351,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         const defaultView = this.getDefaultView();
         this.state = {
             records: [],
-            selectedColumns: defaultView && defaultView.columns.length ? defaultView.columns.slice() : null,
+            selectedColumns:
+                defaultView && defaultView.columns.length ? defaultView.columns.slice() : this.getInitialSelection(),
             totalPages: 1,
             selectedRecords: [],
             selectedRecordIds: [],
@@ -1520,45 +1529,121 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         );
     }
 
-    /** Columnas disponibles para el control (respeta InitialColumns cuando está definido). */
+    /** Columnas del dataset disponibles para el control (siempre todas). */
     getBaseColumns(): ComponentFramework.PropertyHelper.DataSetApi.Column[] {
-        const columns = this.props.context.parameters.DataSource.columns;
-        const raw = this.props.context.parameters.InitialColumns?.raw || '';
+        const source = this.props.context.parameters.DataSource.columns;
 
-        if (this.baseColumnsCache && this.baseColumnsCache.source === columns && this.baseColumnsCache.raw === raw) {
+        if (this.baseColumnsCache && this.baseColumnsCache.source === source) {
             return this.baseColumnsCache.columns;
         }
 
-        const requestedColumns = this.getInitialColumnNames();
-        let baseColumns: ComponentFramework.PropertyHelper.DataSetApi.Column[] = columns;
+        const columns = source || [];
+        this.baseColumnsCache = { source, columns };
 
-        if (requestedColumns.length) {
-            const labels = this.getColumnLabels();
-
-            baseColumns = columns.filter((column) =>
-                [column.name, column.alias, column.displayName, labels[column.name]]
-                    .filter(Boolean)
-                    .some((name) => requestedColumns.includes(normalizeText(String(name))))
-            );
-        }
-
-        this.baseColumnsCache = { source: columns, raw, columns: baseColumns };
-
-        return baseColumns;
+        return columns;
     }
 
-    /** Opciones que el usuario final puede marcar o desmarcar en el selector. */
-    getColumnOptions(): Array<{ label: string; value: string }> {
-        return this.getBaseColumns().map((column) => ({
+    /**
+     * Selección inicial de columnas a partir de `InitialColumns` (nombre lógico, alias,
+     * nombre para mostrar o etiqueta). `null` = se muestran todas.
+     *
+     * El selector de columnas siempre ofrece **todas** las columnas del dataset; esta
+     * propiedad define cuáles vienen marcadas al abrir, y el usuario final puede marcar
+     * o desmarcar cualquier otra.
+     */
+    getInitialSelection(): string[] | null {
+        const raw = this.props.context.parameters.InitialColumns?.raw || '';
+
+        if (!raw.trim()) {
+            return null;
+        }
+
+        const columns = this.getBaseColumns();
+        const key = `${raw}|${this.getColumnsSchemaKey(columns)}`;
+
+        if (this.initialSelectionCache?.key === key) {
+            return this.initialSelectionCache.names;
+        }
+
+        const requested = this.getInitialColumnNames();
+        const labels = this.getColumnLabels();
+        const names = columns
+            .filter((column) =>
+                [column.name, column.alias, column.displayName, labels[column.name]]
+                    .filter(Boolean)
+                    .some((identifier) => requested.includes(normalizeText(String(identifier))))
+            )
+            .map((column) => column.name);
+
+        if (!names.length) {
+            console.warn(
+                `InitialColumns: ninguna columna coincide con "${raw}"; se muestran todas las columnas.`
+            );
+            this.initialSelectionCache = { key, names: null };
+
+            return null;
+        }
+
+        this.initialSelectionCache = { key, names };
+
+        return names;
+    }
+
+    /** Opciones del selector de columnas: nombre visible y tipo de dato. */
+    getColumnOptions(): Array<{ label: string; value: string; type: string }> {
+        const language = this.getLanguage();
+        const key = `${this.getColumnsSchemaKey(this.getBaseColumns())}|${language}|${
+            this.props.context.parameters.ColumnLabels?.raw || ''
+        }|${this.state.activeView || ''}`;
+
+        if (this.columnOptionsCache?.key === key) {
+            return this.columnOptionsCache.options;
+        }
+
+        const options = this.getBaseColumns().map((column) => ({
             label: this.getColumnHeader(column),
-            value: column.name
+            value: column.name,
+            type: describeColumnType(column.dataType, language)
         }));
+        this.columnOptionsCache = { key, options };
+
+        return options;
     }
 
     /** Selección efectiva: la elegida por el usuario o todas las columnas disponibles. */
     getSelectedColumnNames(): string[] {
         return this.state.selectedColumns ?? this.getBaseColumns().map((column) => column.name);
     }
+
+    /** Opción del selector de columnas: nombre de la columna y su tipo de dato. */
+    renderColumnOption = (option: any) => (
+        <div className="modern-data-grid-column-option">
+            <span className="modern-data-grid-column-option-name">{option.label}</span>
+            {!!option.type && <span className="modern-data-grid-column-option-type">{option.type}</span>}
+        </div>
+    );
+
+    /** Pie del selector de columnas: marcar todas o quitar todas. */
+    renderColumnSelectorFooter = () => (
+        <div className="modern-data-grid-columns-footer">
+            <button type="button" className="modern-data-grid-panel-button" onClick={this.onColumnsSelectAll}>
+                {this.getStrings().selectAllColumns}
+            </button>
+            <button type="button" className="modern-data-grid-panel-button" onClick={this.onColumnsClear}>
+                {this.getStrings().clearAllColumns}
+            </button>
+        </div>
+    );
+
+    /** Marca todas las columnas del dataset. */
+    onColumnsSelectAll = () => {
+        this.setState({ selectedColumns: this.getBaseColumns().map((column) => column.name) });
+    };
+
+    /** Quita todas las columnas seleccionadas (con «Todas» se vuelven a marcar). */
+    onColumnsClear = () => {
+        this.setState({ selectedColumns: [] });
+    };
 
     getVisibleColumns(): ComponentFramework.PropertyHelper.DataSetApi.Column[] {
         const baseColumns = this.getBaseColumns();
@@ -2117,6 +2202,10 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                             value={this.getSelectedColumnNames()}
                             options={this.getColumnOptions()}
                             onChange={this.onColumnSelectionChange}
+                            optionLabel="label"
+                            optionValue="value"
+                            itemTemplate={this.renderColumnOption}
+                            panelFooterTemplate={this.renderColumnSelectorFooter}
                             placeholder={strings.columnsPlaceholder}
                             filter
                             selectAllLabel={strings.selectAllColumns}

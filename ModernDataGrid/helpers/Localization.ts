@@ -20,6 +20,8 @@ export interface GridStrings {
     columnsPlaceholder: string;
     /** Texto de "seleccionar todas" del selector de columnas. */
     selectAllColumns: string;
+    /** Texto del botón que quita todas las columnas seleccionadas. */
+    clearAllColumns: string;
     /** Mensaje sin registros (solo si EmptyMessage no está configurado). */
     emptyMessage: string;
     /** Plantilla del reporte de paginación; admite {first}, {last} y {filtered}. */
@@ -48,6 +50,7 @@ const ENGLISH_STRINGS: GridStrings = {
     columnsSelector: 'Show or hide columns',
     columnsPlaceholder: 'Columns',
     selectAllColumns: 'Select all',
+    clearAllColumns: 'Clear all',
     emptyMessage: 'No records found.',
     pageReport: 'Showing {first} to {last} entries · Filtered: {filtered}',
     searchByColumn: 'Search by {column}',
@@ -67,6 +70,7 @@ const SPANISH_STRINGS: GridStrings = {
     columnsSelector: 'Mostrar u ocultar columnas',
     columnsPlaceholder: 'Columnas',
     selectAllColumns: 'Todas',
+    clearAllColumns: 'Quitar todas',
     emptyMessage: 'No se encontraron registros.',
     pageReport: 'Mostrando {first} a {last} registros · Filtrados: {filtered}',
     searchByColumn: 'Buscar en {column}',

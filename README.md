@@ -74,7 +74,7 @@ This is a **dataset** control: its data comes from the `DataSource` data set pro
 | `BooleanLabels` | Text area | `column=True\|False, …` | empty (`Yes`/`No`) | `Active=Yes\|No` |
 | `Views` | Text area (JSON) | object (or array) of views | empty (no combo) | `{"active":{"nombre":"Active","columnas":"name;status","filtros":"status = Active"}}` |
 | `DateFormat` | Enum (36 options) | `default`, `dd_MM_yyyy`, `yyyy-MM-dd`, `dd_MM_yyyy_HH_mm`, `HH_mm`, … | `default` | `dd_MM_yyyy_HH_mm` |
-| `InitialColumns` | Text area | comma separated names, aliases or display names | empty (all columns) | `name, Amount, Date` |
+| `InitialColumns` | Text area | comma separated names, aliases or display names (visible at load; the column selector lists every column) | empty (all columns) | `name, Amount, Date` |
 | `ColumnLabels` | Text area | `column=Label, otherColumn=Other label` | empty (data set names) | `amount=Amount (€)` |
 | `Language` | Enum | `en` / `es` | `en` | `es` |
 | `RowColorRules` | Text area | `column=value:background[:text]\|value:background, …` (`~` contains, `*` any) | empty | `status=Active:#DFF6DD\|Pending:#FFF4CE` |
@@ -94,4 +94,4 @@ window.__mdgPerfReport();   // console.table with the accumulated summary
 
 Details, counters and reference measurements: [DOCUMENTATION.md §9.6](DOCUMENTATION.md).
 
-**Current version:** solution `1.0.0.34` · control `0.0.47`.
+**Current version:** solution `1.0.0.35` · control `0.0.48`.

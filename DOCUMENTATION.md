@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.34` |
+| Versión de la solución | `1.0.0.35` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.47` |
+| Versión del control (manifest) | `0.0.48` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.47`) y la versión de la solución (`1.0.0.34`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.48`) y la versión de la solución (`1.0.0.35`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 
 ## 2. Requisitos
 
@@ -104,7 +104,7 @@ ModernDataGrid1.ColumnLabels = "nombre=Nombre completo, importe=Importe (€)"
 | `BooleanLabels` | TextArea | `columna=Verdadero\|Falso, …` | vacío | `Yes` / `No` | `Activo=Sí\|No` | Etiquetas del tipo Sí/No por columna (ver §8.9) |
 | `Views` | TextArea (JSON) | objeto o arreglo JSON con las vistas | vacío | sin combo de vistas | `{ "activos": { "nombre": "Activos" } }` | Vistas/informes del usuario final: columnas, títulos, filtros y orden (ver §8.10) |
 | `DateFormat` | Enum (36 opciones) | `default`, `dd_MM_yyyy`, `yyyy-MM-dd`, `dd_MM_yyyy_HH_mm`, `HH_mm`, … (lista en §8.3) | `default` | `default` | `dd_MM_yyyy_HH_mm` | Formato **global** de fecha / fecha y hora / hora, cuando la columna no tiene formato en las propiedades `DateFormats`/`DateTimeFormats`/`TimeFormats` (ver §5.1 y §8.3) |
-| `InitialColumns` | TextArea | nombres, alias o nombres para mostrar separados por comas | vacío | todas | `nombre, Importe, Fecha` | Columnas iniciales. Vacío = todas |
+| `InitialColumns` | TextArea | nombres, alias o nombres para mostrar separados por comas | vacío | todas | `nombre, Importe, Fecha` | Columnas **visibles al abrir**. El selector de columnas siempre ofrece todas las del dataset (ver §5.1 y §8.1) |
 | `ColumnLabels` | TextArea | `columna=Etiqueta visible, otraColumna=Otra etiqueta` | vacío | nombres del dataset | `nombre=Nombre completo, importe=Importe (€)` | Nombres que verá el usuario final para cada columna (ver §5.1 y §8.5) |
 | `Language` | Enum | `en`, `es` | `en` | `en` | `es` | Idioma de todos los textos del control |
 | `RowColorRules` | TextArea | `columna=valor:colorFondo[:colorTexto]\|…, otraColumna=…` (`~` = contiene, `*` = cualquiera) | vacío | sin colores | `estado=Activo:#DFF6DD\|Pendiente:#FFF4CE, prioridad=~alta:#FDE7E9` | Colorea el registro completo según el valor de una columna (ver §7.8) |
@@ -183,10 +183,13 @@ dd/MM/yyyy HH:mm
 ```
 
 ### `InitialColumns` — TextArea · default vacío
-Columnas que se muestran al cargar, separadas por comas (nombre, alias o nombre para mostrar). Vacío = todas. Define además el conjunto inicial del que parte el selector de columnas del usuario final.
+Columnas que se muestran **al cargar**, separadas por comas (nombre, alias, nombre para mostrar o etiqueta de `ColumnLabels`). Vacío = todas.
+
 ```text
 nombre, Importe, Fecha
 ```
+
+No limita el selector de columnas: el selector siempre lista **todas** las columnas del dataset (con su tipo de dato) para que el usuario final pueda marcar cualquier otra. Si el texto no coincide con ninguna columna, se avisa por consola y se muestran todas.
 
 ### `ColumnLabels` — TextArea · default vacío
 Nombres que verá el **usuario final** para cada columna. La columna se identifica por nombre lógico, alias o nombre para mostrar.
@@ -329,7 +332,7 @@ Acepta JSON estricto y también el formato de objeto de JavaScript (nombres de p
 - Selección de registros (múltiple o con checkbox) sincronizada con el dataset.
 - **Selector de vistas/informes** para el usuario final (columnas, títulos, filtros y orden definidos por el programador), junto al selector de columnas.
 - **Filtro por rango de fechas** en las columnas de fecha y fecha y hora (calendario con día inicial y final, ambos incluidos).
-- **Selector de columnas para el usuario final** (mostrar/ocultar columnas en tiempo de ejecución).
+- **Selector de columnas para el usuario final** (mostrar/ocultar columnas en tiempo de ejecución): lista todas las columnas del dataset con su **tipo de dato** y botones **Todas** / **Quitar todas**.
 - **Botón para limpiar todos los filtros** (buscador global + filtros de columna) de un clic.
 - **Exportación a Excel (.xlsx real)** de lo que está filtrado.
 - **Coloreado del registro completo** según el valor de una columna.
@@ -397,9 +400,14 @@ El **total de la tabla en la base de datos no se muestra**.
 `SelectionMode`: `multiple` o `checkbox`. La selección se publica en el dataset (`setSelectedRecordIds`), de modo que la app puede leerla. Con `IsEnabled = false` no se permite seleccionar.
 
 ### 7.6 Selector de columnas (usuario final)
-En la barra hay un desplegable que lista **las columnas disponibles** para que el usuario final las marque o desmarque en tiempo de ejecución (por ejemplo, para no ver una columna que no necesita). El disparador **no muestra texto ni etiquetas** (solo su icono), para que la barra no se desborde. `InitialColumns` define la lista inicial disponible; vacío = todas las columnas del dataset. La selección del usuario no modifica el dataset, solo lo que se pinta (y lo que se exporta).
+En la barra hay un desplegable que lista **todas las columnas del dataset** para que el usuario final las marque o desmarque en tiempo de ejecución (por ejemplo, para no ver una columna que no necesita). El disparador es cuadrado y **no muestra texto ni etiquetas** (solo su icono), para que la barra quepa en una fila. `InitialColumns` define qué columnas vienen marcadas al abrir; vacío = todas. La selección del usuario no modifica el dataset, solo lo que se pinta (y lo que se exporta).
 
-Si el programador definió **vistas** (§8.10), al lado de este selector aparece el **combo de vistas**: al elegir una, la grilla cambia de columnas, títulos, filtros y orden, y el usuario puede seguir marcando o desmarcando columnas por encima de la vista elegida.
+El panel de la lista muestra, en cada opción, el **nombre de la columna** y su **tipo de dato** (Texto, Fecha y hora, Número, Moneda, Sí/No, Opción, Correo…), y lleva dos botones al pie:
+
+- **Todas** — marca todas las columnas (también está la casilla de *Todas* en la cabecera de la lista).
+- **Quitar todas** — desmarca todas las columnas seleccionadas; con **Todas** se vuelven a marcar.
+
+Si el programador definió **vistas** (§8.10), al lado de este selector aparece el **combo de vistas**: al elegir una, la grilla cambia de columnas, títulos, filtros y orden, y el usuario puede seguir marcando o desmarcando columnas por encima de la vista elegida (las columnas de la vista siempre están disponibles porque el selector lista todo el dataset).
 
 ### 7.7 Exportar a Excel
 Botón con el icono de Excel en la barra. Genera un archivo **`.xlsx` real** (Office Open XML) sin librerías externas, con:
@@ -482,13 +490,13 @@ Después de elegir una vista el usuario puede **filtrar y buscar encima de ella*
 ## 8. Referencia de formatos
 
 ### 8.1 `InitialColumns`
-Lista separada por comas de columnas a mostrar inicialmente. Acepta **nombre lógico, alias o nombre para mostrar** (sin distinguir mayúsculas ni acentos).
+Lista separada por comas de columnas a mostrar **al cargar**. Acepta **nombre lógico, alias, nombre para mostrar o la etiqueta de `ColumnLabels`** (sin distinguir mayúsculas ni acentos).
 
 ```text
 nombre, Importe facturado, cuentas_pk
 ```
 
-Vacío = todas las columnas del dataset. Es también el conjunto del que parte el selector de columnas del usuario final.
+Vacío = todas las columnas del dataset. **No limita el selector de columnas**: el usuario final siempre puede marcar cualquier columna del dataset (el selector lista todas, con su tipo de dato). Si ninguna entrada coincide con una columna, la consola lo avisa y se muestran todas.
 
 ### 8.2 `FieldConfigurations`
 Formato general:
@@ -809,6 +817,7 @@ Vistas que el usuario final elige en el **combo de la barra**, junto al selector
 | `ModernDataGrid/helpers/FieldFormats.ts` | Formatos por columna (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) y compatibilidad con `FieldConfigurations` |
 | `ModernDataGrid/helpers/Views.ts` | Vistas/informes de la propiedad `Views`: análisis del JSON, filtros, orden, títulos y nombre del Excel |
 | `ModernDataGrid/helpers/ColumnLabels.ts` | Etiquetas personalizadas de encabezados (`ColumnLabels`) |
+| `ModernDataGrid/helpers/ColumnTypes.ts` | Nombre traducido del tipo de dato de cada columna (selector de columnas) |
 | `ModernDataGrid/helpers/ExcelExport.ts` | Generador `.xlsx` (contenedor OPC/ZIP sin dependencias) |
 | `ModernDataGrid/helpers/RowColoring.ts` | Compilador de reglas de color de fila |
 | `ModernDataGrid/helpers/Localization.ts` | Textos es/en y locale español de PrimeReact |
@@ -858,7 +867,8 @@ npm run build
 - **Colores de fila**: PrimeReact 10 no tiene `rowStyle`, así que se usa `rowClassName` + una hoja `<style data-modern-data-grid="row-colors">` que se elimina al desmontar.
 - **Exportación**: se aplican los mismos criterios que la grilla usando `FilterService` de PrimeReact, para que los modos de coincidencia coincidan exactamente.
 - **Idioma**: se registra con `addLocale('es', …)` y se activa con `locale('es')` (PrimeReact lee la locale global al pintar), por eso se aplica en el constructor y en `shouldComponentUpdate`.
-- **Layout de la barra**: `flex-wrap` + altura uniforme de 2,5 rem; el selector de columnas oculta su etiqueta para no desbordar y el combo de vistas se dibuja junto a él, con la descripción de cada informe dentro de la lista.
+- **Layout de la barra (desde `1.0.0.35`)**: una sola fila (`flex-wrap: nowrap`) con controles de 2,25 rem e iconos de 1 rem; el título se recorta antes que los controles y el buscador es el que se contrae. El selector de columnas es cuadrado (solo el icono) y su panel muestra el tipo de dato y los botones **Todas** / **Quitar todas**.
+- **Selector de columnas y `InitialColumns` (desde `1.0.0.35`)**: `getBaseColumns()` devuelve siempre todas las columnas del dataset (para que el selector y las vistas nunca pierdan columnas) y `getInitialSelection()` traduce `InitialColumns` a la selección inicial (`null` = todas). Si el texto no coincide con ninguna columna, se avisa por consola y se muestran todas.
 - **Formato por columna (desde `1.0.0.34`)**: `helpers/FieldFormats.ts` mezcla las propiedades dedicadas (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) con la heredada `FieldConfigurations` y produce el formato de cada columna, resolviendo la columna por nombre, alias, nombre para mostrar o etiqueta. `getParsedFormatProperties()` analiza las siete propiedades **una vez** por cambio de texto y las reparte a todas las columnas del mapeo.
 - **Rango de fechas (desde `1.0.0.34`)**: el valor visible de una columna de fecha es texto formateado, así que el mapeo guarda además la **fecha real en milisegundos** en un campo oculto (`columna + '__mdgdatevalue'`). El `Column` recibe `filterField` apuntando a ese campo, `filterMatchMode = between` y un `filterElement` con el calendario de rango; el modelo de filtros se indexa por ese mismo campo (`createColumnFilter` / `getFiltersForTable`) y la exportación resuelve el mismo valor (`resolveFilterRecordField`), de modo que grilla y Excel filtran igual. El rango se guarda como `[inicioDelDía, finDelDía]` para que los dos extremos queden incluidos.
 - **Vistas (desde `1.0.0.34`)**: `helpers/Views.ts` analiza la propiedad `Views` (JSON estricto o con `;` y nombres sin comillas), traduce los identificadores a nombres lógicos del dataset (`compileView`) y devuelve las columnas, títulos, filtros, orden y el nombre del Excel. Los filtros de la vista se aplican en la misma pasada que el buscador global (`getFilteredRecords`), con caché por `[filas, término, vista]`, y el orden se controla desde el estado (`sortField`/`sortOrder` + `onSort`) para poder aplicarlo desde la vista sin perder el ordenamiento manual.
@@ -884,7 +894,7 @@ Select-String -Path ModernDataGrid\ControlManifest.Input.xml -Pattern "=\"[^""]*
 
 1. Power Apps Maker muestra la versión esperada de la solución.
 2. Cierra y reabre la app de lienzo; el control responde a las propiedades configuradas.
-3. La barra muestra buscador (si `DisplaySearch = true`), selector de columnas, refrescar y exportar (si `DisplayHeader = true`).
+3. La barra muestra, **en una sola fila**, el combo de vistas (si `Views` tiene contenido), el selector de columnas, el buscador (si `DisplaySearch = true`), refrescar y exportar (si `DisplayHeader = true`). El selector de columnas lista todas las del dataset con su tipo de dato y tiene los botones **Todas** / **Quitar todas**.
 4. Con `AllowFiltering = true` aparecen los embudos y el panel abre con **Contenga**; al escribir filtra al momento.
 5. El pie del paginador muestra `Mostrando X a Y registros · Filtrados: Z`.
 6. El buscador global filtra sobre todas las columnas y se combina con los filtros de columna.
@@ -978,6 +988,8 @@ El buscador, el selector de columnas, el **combo de vistas**, el refresco y la e
 | Síntoma | Causa / solución |
 |---|---|
 | No veo la barra, el buscador ni los botones | `DisplayHeader = true` y (para el buscador) `DisplaySearch = true` |
+| No veo el selector de columnas o le faltan columnas | Vive en la barra (`DisplayHeader = true`). Desde `1.0.0.35` lista **todas** las columnas del dataset, aunque `InitialColumns` tenga menos: si ves una lista corta, es una versión anterior |
+| La barra se parte en dos líneas o los controles se ven grandes | Desde `1.0.0.35` va en **una sola fila** con controles de 2,25 rem. Si aún se parte, hay CSS del host sobre `.modern-data-grid-actions` (revisa §12 para ajustar anchos y alturas) |
 | No aparecen los embudos de filtro | `AllowFiltering = true` |
 | No puedo ordenar | `AllowSorting = true` |
 | El filtro por columna no filtraba | Corregido en la versión de solución `1.0.0.17`; comprueba que importaste esa versión o superior |
@@ -1049,7 +1061,7 @@ No: es de solo lectura. Muestra, filtra, ordena, publica la selección de ids y 
 Sí, es un control de dataset; los *defaults* del manifest aplican cuando la propiedad no está configurada.
 
 **¿Hay límite de columnas?**
-Se muestran las del dataset (o las de `InitialColumns`); el usuario final puede ocultar las que no necesite con el selector.
+No: el selector de columnas lista **todas** las columnas del dataset (con su tipo de dato) y el usuario final puede ocultar o volver a mostrar cualquiera. `InitialColumns` solo define cuáles vienen visibles al abrir.
 
 **¿Necesito la fuente PrimeIcons?**
 No. Todos los iconos del control son SVG en línea.
@@ -1060,11 +1072,14 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Quiero… | Cambiar |
 |---|---|
-| Combo de columnas más ancho | `min-width: 4.5rem` en `.modern-data-grid-column-selector` |
-| Combo de vistas más ancho o más corto | `flex` / `min-width` de `.modern-data-grid-view-selector` |
+| **Todo en una sola fila** | `.modern-data-grid-header` y `.modern-data-grid-actions` usan `flex-wrap: nowrap !important`; el título (`> h4`) se recorta con puntos suspensivos y el buscador (`flex: 1 1 8rem`) es el que se contrae |
+| Altura de todos los controles | `height: 2.25rem` en `.modern-data-grid-actions .p-inputtext, .p-multiselect, .p-dropdown, .p-button.p-button-icon-only` |
+| Iconos más grandes o más pequeños | `width/height` de `.p-button .p-button-icon svg` (hoy `1rem`) y `> .p-input-icon svg` (hoy `1rem`) |
+| Combo de vistas más ancho o más corto | `flex` / `min-width` de `.modern-data-grid-view-selector` (hoy `0 1 10rem` / `6rem`) |
+| Buscador más ancho o más corto | `flex` / `min-width` de `.modern-data-grid-actions .p-icon-field.p-icon-field-left` (hoy `1 1 8rem` / `4.5rem`) |
+| Selector de columnas más ancho | `width` / `min-width` de `.modern-data-grid-column-selector` (hoy `2.25rem`, solo el icono) |
 | Ver los nombres/placeholder en el combo de columnas | Quitar la regla que oculta `.p-multiselect-label` |
-| Iconos más grandes | `width/height` de `.p-button .p-button-icon svg` (hoy `1.15rem`) y `> .p-input-icon svg` (hoy `1.05rem`) |
-| Barra más alta o más baja | `height: 2.5rem` en `.p-inputtext`, `.p-multiselect`, `.p-dropdown` y `.p-button.p-button-icon-only` |
+| Botones del pie del selector de columnas | `.modern-data-grid-panel-button` (color, tamaño, separación) |
 | Tooltips más anchos o más estrechos | `max-width` de `.p-tooltip .p-tooltip-text` (hoy `20rem`) |
 | Calendario de rango más ancho | `min-width` de `.modern-data-grid-date-filter` (hoy `17rem`) |
 | Tamaño de página del pie | `getPageSize()` en `DataGrid.tsx` (las filas que elige el usuario con el desplegable; si no, el tamaño de la app `displayPageSize` y, si no, 25). Carga de la fuente: `requestWholeSource()` con `maxLoadedRows` (10000), `maxAutoLoadedRows` (2000, fondo) y `maxLoadRetries` (3) |
@@ -1073,6 +1088,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.35` / `0.0.48` | **Barra en una sola fila, más compacta, y selector de columnas completo.** (1) La barra ya no se reparte en varias líneas: título + combo de vistas + selector de columnas + buscador + botones van en **una sola fila** (`flex-wrap: nowrap`), con controles de `2.25rem` de alto, iconos de `1rem`, menos separación y un título que se recorta con puntos suspensivos si falta espacio. (2) El **selector de columnas** (Mostrar u ocultar columnas) ahora lista **todas las columnas del dataset** (antes, si `InitialColumns` estaba definido, la lista se limitaba a esas columnas y podía parecer incompleto), muestra el **tipo de dato** de cada columna (Texto, Fecha y hora, Número, Moneda, Sí/No, Opción, Correo…, traducido al idioma del control) y añade al pie los botones **Todas** y **Quitar todas** (desmarca todo; con *Todas* se vuelve a marcar). El disparador es cuadrado, solo con su icono. (3) `InitialColumns` pasa a definir únicamente las columnas **visibles al abrir** y ya no limita lo que el usuario puede mostrar; si su texto no coincide con ninguna columna, la consola lo avisa y se muestran todas. (4) Nuevo helper `helpers/ColumnTypes.ts` con el nombre traducido del tipo de dato. Sin cambios en dataset, buscador, filtros (rango de fechas incluido), vistas, paginación, selección, colores ni exportación |
 | `1.0.0.34` / `0.0.47` | **Propiedades de formato separadas, filtro por rango de fechas y vistas (informes).** (1) `FieldConfigurations` se acompaña de propiedades dedicadas por tipo de formato: `CurrencyFormats` (moneda, `locale`, `decimals`), `DateFormats` (solo fecha), `DateTimeFormats` (fecha y hora), `TimeFormats` (solo hora), `NumberFormats` (decimales, separador de miles e idioma regional), `DecimalFormats` (atajo de decimales) y `BooleanLabels` (etiquetas Sí/No). Aceptan token del combo o patrón libre y tienen **prioridad** sobre `FieldConfigurations`, que se mantiene por compatibilidad; el combo global `DateFormat` queda como último recurso. (2) En las columnas de **fecha y fecha y hora** el filtro del embudo pasa a ser un **selector de rango de fechas** (calendario con día inicial y final, ambos incluidos, con *Hoy* y *Limpiar*); el rango se evalúa contra la fecha real del registro y se respeta en la exportación a Excel, así que funciona con cualquier formato visible. (3) Nueva propiedad **`Views`**: vistas/informes en JSON (nombre, descripción, columnas, títulos, filtros, orden, archivo y hoja) que el usuario final elige en un **combo junto al selector de columnas**; al elegir una vista la grilla cambia de columnas, títulos, filtros y orden, el Excel usa su archivo y su hoja, y los filtros manuales se suman a los de la vista. Incluye operadores `=`, `!=`, `%…%`, `…%`, `%…`, `>`, `>=`, `<`, `<=` y análisis tolerante (JSON estricto o formato de objeto con `;` y claves sin comillas). (4) Corregido el **tooltip de los botones de la barra** (el texto salía amontonado): ahora tiene ancho de lectura, interlineado y salto de palabra. (5) Rendimiento: los formatos se analizan una vez por cambio, la vista compilada y sus opciones se memoizan, el rango de fechas usa un campo oculto con la fecha en milisegundos y el modelo de filtros sigue indexado por columna (sin recorridos extra por fila). (6) El orden de las columnas de fecha y fecha y hora pasa a ser **cronológico** (se ordena por la fecha real, no por el texto de la celda), tanto al pulsar el encabezado como al aplicar `ordenarPor` de una vista. Sin cambios de comportamiento en lo que ya funcionaba (dataset, buscador, paginación, selección, colores, Excel estándar) |
 | `1.0.0.33` / `0.0.46` | **Corregido: las páginas se veían en blanco (o parpadeando) a partir de la segunda/tercera.** PrimeReact no combina paginador con scroll virtual: el `DataTable` vuelve a recortar con `dataToRender` el trozo que ya había recortado el `VirtualScroller`, de modo que toda página posterior al viewport (~40 filas) quedaba vacía. Ahora el **scroll virtual se usa solo cuando el paginador está desactivado** (`DisplayPagination = false`, lista completa virtualizada); con el paginador activo se renderizan únicamente las filas de la página (`Default Rows`), que es más rápido y evita el parpadeo. No cambia propiedades ni el resto del comportamiento |
 | `1.0.0.32` / `0.0.45` | **Optimización de rendimiento con datasets grandes (sin cambios de propiedades ni de comportamiento visible).** El mapeo de filas pasa a ser **incremental**: las filas ya formateadas se reutilizan y solo se formatea lo que llega en cada página (antes se reformateaba todo lo cargado en cada página, con coste cuadrático). Se elimina la comparación profunda `lodash.isEqual` en favor de firmas y comparación por referencias, se cachea el texto buscable de cada fila, la búsqueda global se aplica con un retardo de 200 ms (inmediato con Enter o al salir del campo) y las propiedades/objetos que recibe PrimeReact pasan a tener identidad estable para no romper su memoización. El color de fila se calcula una vez por fila y el refresco de la fuente (`needsRefresh`) se consume una sola vez (antes podía dispararse en cada render). El control repinta menos veces por interacción (un render en lugar de dos) y la revalidación del dataset se agrupa. **Diagnóstico opcional**: `window.__mdgPerf = true` publica contadores de renders, tiempos de mapeo y filas reutilizadas; `window.__mdgPerfReport()` imprime el resumen (también al desmontar el control). No cambia ninguna propiedad del manifest, ni la exportación a Excel, ni el paginado, ni los filtros |
