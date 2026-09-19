@@ -7,6 +7,8 @@ import DataGrid from "./components/DataGrid";
 export class ModernDataGrid implements ComponentFramework.ReactControl<IInputs, IOutputs> {
     private container: HTMLDivElement;
     private notifyOutputChanged: () => void;
+    /** Número de veces que el host ha pedido pintar el control (diagnóstico con `window.__mdgPerf`). */
+    private updateViewCount = 0;
     constructor() {}
 
     public init(
@@ -22,6 +24,12 @@ export class ModernDataGrid implements ComponentFramework.ReactControl<IInputs, 
     public updateView(
         context: ComponentFramework.Context<IInputs>
       ): React.ReactElement {
+        this.updateViewCount++;
+
+        if (typeof window !== 'undefined' && (window as any).__mdgPerf === true) {
+            console.log('[ModernDataGrid][perf] updateView', { numero: this.updateViewCount });
+        }
+
         return React.createElement(DataGrid, {context:context,notifyOutputChanged: this.notifyOutputChanged});
     }
 

@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.30` |
+| Versión de la solución | `1.0.0.32` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.43` |
+| Versión del control (manifest) | `0.0.45` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.43`) y la versión de la solución (`1.0.0.30`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.45`) y la versión de la solución (`1.0.0.32`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 
 ## 2. Requisitos
 
@@ -702,6 +702,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.32` / `0.0.45` | **Optimización de rendimiento con datasets grandes (sin cambios de propiedades ni de comportamiento visible).** El mapeo de filas pasa a ser **incremental**: las filas ya formateadas se reutilizan y solo se formatea lo que llega en cada página (antes se reformateaba todo lo cargado en cada página, con coste cuadrático). Se elimina la comparación profunda `lodash.isEqual` en favor de firmas y comparación por referencias, se cachea el texto buscable de cada fila, la búsqueda global se aplica con un retardo de 200 ms (inmediato con Enter o al salir del campo) y las propiedades/objetos que recibe PrimeReact pasan a tener identidad estable para no romper su memoización. El color de fila se calcula una vez por fila y el refresco de la fuente (`needsRefresh`) se consume una sola vez (antes podía dispararse en cada render). El control repinta menos veces por interacción (un render en lugar de dos) y la revalidación del dataset se agrupa. **Diagnóstico opcional**: `window.__mdgPerf = true` publica contadores de renders, tiempos de mapeo y filas reutilizadas; `window.__mdgPerfReport()` imprime el resumen (también al desmontar el control). No cambia ninguna propiedad del manifest, ni la exportación a Excel, ni el paginado, ni los filtros |
 | `1.0.0.31` / `0.0.44` | **Corregido: el Excel exportado coincide con la vista.** Cuando el modelo de filtro del panel llega **sin modo de coincidencia** se aplica el de la columna (`Contains`), igual que el DataTable; antes se asumía *Comience con* y el archivo podía traer menos filas que la grilla (p. ej. 1 en vez de 23). Se añade en la consola `[ModernDataGrid] exportando a Excel { columnas, filas, filasCargadas }` |
 | `1.0.0.30` / `0.0.43` | **Se traen todos los registros de la fuente**: al abrir, al pulsar *Actualizar* y al pulsar *Limpiar filtros* se pide a `Items` una página del tamaño del tope (10000 filas), de modo que también llega la **última página incompleta** (113 registros → 5 páginas de 25) y el paginado en pantalla sigue con el tamaño de la app. Si el host ignora ese tamaño, se piden páginas con `loadNextPage()` **reintentando hasta 3 veces** antes de darla por agotada y se avisa por consola. *Limpiar filtros* reinicia además los contadores internos y *Actualizar* vuelve a pedir la fuente completa |
 | `1.0.0.29` / `0.0.42` | **Refrescar recarga todo**: al pulsar *Actualizar* (y al abrir el control) se traen **todas las páginas que ofrezca `Items`** (tope de 10000 filas), la grilla se repinta con los datos nuevos y el pie vuelve a paginar el conjunto completo. **Corregido**: el control no detectaba que el dataset se recargaba o que llegaban páginas nuevas (el `DataSet` no expone `raw`), por lo que el paginado quedaba desincronizado tras refrescar; ahora compara una firma de filas (`loading`, cantidad, primer y último id) y repinta. Sin filtros, *Filtrados* es el total de registros cargados de la fuente |

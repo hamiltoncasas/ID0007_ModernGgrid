@@ -34,7 +34,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.31`
+- Solution version: `1.0.0.32`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -216,7 +216,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.31`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.32`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -229,7 +229,9 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.44`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.45`, is separate from the four-part Dataverse solution version.
+
+Performance work (incremental row mapping, memoized render inputs, search debounce and the optional `window.__mdgPerf` diagnostics) must never change manifest properties or user-visible behavior: keep the dataset property, the export, the pagination and the filters as they are, and keep `shouldComponentUpdate` free of side effects (the dataset `refresh()` is consumed in `componentDidUpdate`).
 
 Never use apostrophes (`'`) inside manifest attribute values. Dataverse validates `display-name-key` with the `noAposStringType` type, so a single quote makes the import fail with *XSD validation failed … The Pattern constraint failed*. Patterns that need quotes in date-fns (`d 'de' MMMM 'de' yyyy`, `yyyy-MM-dd'T'HH:mm:ss`) must be written without apostrophes in the manifest; the real pattern lives in `helpers/DateFormat.ts`. Quick check:
 

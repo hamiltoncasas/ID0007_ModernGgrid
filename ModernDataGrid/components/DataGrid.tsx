@@ -1,7 +1,6 @@
 import React, { Component } from 'react';
 import { FilterMatchMode, FilterOperator, FilterService } from 'primereact/api';
 import { DataTable } from 'primereact/datatable';
-import isEqual from 'lodash.isequal';
 import { Column } from 'primereact/column';
 import { InputText } from 'primereact/inputtext';
 import { IconField } from 'primereact/iconfield';
@@ -24,6 +23,87 @@ import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
 import 'primeflex/primeflex.css';
 import "./DataGrid.css";
+
+/**
+ * Opciones del virtual scroller. Es un objeto estable a nivel de módulo: si se creara en cada
+ * render, PrimeReact recibiría una identidad nueva y volvería a procesar el cuerpo de la tabla.
+ */
+const VIRTUAL_SCROLLER_OPTIONS = { itemSize: 38 };
+/** Estilo de la tabla (identidad estable: PrimeReact copia los estilos, nunca los modifica). */
+const TABLE_STYLE: React.CSSProperties = { width: '100%', minWidth: '0' };
+/** Ancho mínimo de una columna de datos. */
+const COLUMN_STYLE: React.CSSProperties = { minWidth: '12rem' };
+/** Ancho de la columna de selección. */
+const SELECTION_COLUMN_HEADER_STYLE: React.CSSProperties = { width: '3rem' };
+/** Tamaños de página que ofrece el pie, además del tamaño activo. */
+const BASE_ROWS_PER_PAGE = [5, 15, 25];
+/** Separador del texto buscable de una fila (no puede escribirse en el buscador de una línea). */
+const SEARCH_TEXT_SEPARATOR = '\n';
+
+interface SearchBoxProps {
+    /** Valor aplicado por el control (permite reiniciar el texto al limpiar filtros o recargar). */
+    value: string;
+    placeholder: string;
+    /** Se llama en cada tecla: el control programa la aplicación del valor con un retardo corto. */
+    onChange: (value: string) => void;
+    /** Se llama al pulsar Enter o al salir del campo: el control aplica el valor al instante. */
+    onFlush: (value: string) => void;
+    /** Cambia cuando el control pide vaciar el buscador (Limpiar filtros) aunque el texto no cambie. */
+    resetToken: number;
+}
+
+/**
+ * Buscador global con estado propio. Al mantener el texto dentro de este componente, escribir no
+ * vuelve a pintar la cuadrícula completa (ni dispara el filtrado interno de PrimeReact) en cada
+ * pulsación: el valor se comunica al control con el retardo del buscador y, si el usuario pulsa
+ * Enter o sale del campo, se aplica de inmediato.
+ */
+class SearchBox extends Component<SearchBoxProps, { text: string }> {
+    constructor(props: SearchBoxProps) {
+        super(props);
+        this.state = { text: props.value ?? '' };
+    }
+
+    componentDidUpdate(prevProps: SearchBoxProps): void {
+        // Se sincroniza cuando el control cambia el valor aplicado (recarga) y también cuando pide
+        // vaciar el buscador (Limpiar filtros): ese segundo caso es imprescindible porque el valor
+        // aplicado puede ser ya vacío mientras el usuario tiene texto escrito sin aplicar.
+        const valueChanged = prevProps.value !== this.props.value;
+        const resetRequested = prevProps.resetToken !== this.props.resetToken;
+
+        if ((valueChanged || resetRequested) && this.props.value !== this.state.text) {
+            this.setState({ text: this.props.value ?? '' });
+        }
+    }
+
+    onTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const text = e.target.value;
+        this.setState({ text });
+        this.props.onChange(text);
+    };
+
+    onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            this.props.onFlush(this.state.text);
+        }
+    };
+
+    onBlur = () => {
+        this.props.onFlush(this.state.text);
+    };
+
+    render(): React.ReactElement {
+        return (
+            <InputText
+                value={this.state.text}
+                onChange={this.onTextChange}
+                onBlur={this.onBlur}
+                onKeyDown={this.onKeyDown}
+                placeholder={this.props.placeholder}
+            />
+        );
+    }
+}
 
 interface DataGridProps {
     context: ComponentFramework.Context<IInputs>;
@@ -51,6 +131,10 @@ interface DataGridState {
     totalPages: number;
     /** Columnas que el usuario final decidió ver; null = todas las disponibles. */
     selectedColumns: string[] | null;
+    /** Texto que se está escribiendo en el buscador; el filtrado efectivo se aplica con retardo. */
+    searchText: string;
+    /** Se incrementa cuando el control pide vaciar el buscador (sincroniza el texto del SearchBox). */
+    searchResetToken: number;
 }
 
 class DataGrid extends Component<DataGridProps, DataGridState> {
@@ -77,6 +161,64 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     private filteredRecordsCache: { source: any[]; search: string; records: any[] } | null = null;
     private matchingRecordsCache: { source: any[]; key: string; records: any[] } | null = null;
     private numberFormatters = new Map<string, Intl.NumberFormat>();
+    /** Fila ya formateada, ligada a la referencia del record del dataset que la originó. */
+    private mappedRowCache = new Map<string, { record: any; mapped: Record<string, any> }>();
+    /** Estructura (columnas + configuración + idioma) que obliga a reformatear todas las filas. */
+    private mappedStructureKey = '';
+    /** Firma de las filas que se formatearon por última vez (protege la revalidación forzada). */
+    private mappedRowSignature = '';
+    /** true cuando la app pide recargar la fuente: la siguiente pasada reformatea todas las filas. */
+    private invalidateMappedRows = false;
+    /** Texto buscable (minúsculas) por fila: se descarta solo cuando la fila se vuelve a mapear. */
+    private searchTextCache = new WeakMap<object, string>();
+    /** Selección que recibe el DataTable, memoizada por identidad de filas y de ids. */
+    private selectionCache: { records: any[]; ids: any[]; selected: any[] } | null = null;
+    /** Tamaños de página del pie memoizados por tamaño activo. */
+    private rowsPerPageCache: { pageSize: number; options: number[] } | null = null;
+    /** Campos de la búsqueda global del DataTable memoizados por columnas. */
+    private globalFilterFieldsCache: { source: any[]; fields: string[] } | null = null;
+    /** Propiedades del pie memoizadas (evita crear un objeto nuevo en cada render). */
+    private paginationPropsCache: { key: string; props: any } | null = null;
+    /** Plantilla del reporte de paginación memoizada por idioma y recuento filtrado. */
+    private pageReportCache: { key: string; template: string } | null = null;
+    /** Clase de color por fila (WeakMap por identidad de fila) y reglas con las que se calculó. */
+    private rowClassByRow = new WeakMap<object, string>();
+    private rowClassRulesKey: string | null = null;
+    /** Renderizadores de celda estables por nombre de columna. */
+    private columnBodyCache = new Map<string, (item: Record<string, any>) => any>();
+    /** Estilos de columna estables por nombre de columna. */
+    private columnStyleCache = new Map<string, React.CSSProperties>();
+    /** Clave de columnas del dataset memoizada por identidad del arreglo de columnas. */
+    private columnsSchemaCache: { source: any[]; key: string } | null = null;
+    /** Columnas base y visibles memoizadas. */
+    private baseColumnsCache: { source: any[]; raw: string; columns: any[] } | null = null;
+    private visibleColumnsCache: { base: any[]; selected: string[] | null; columns: any[] } | null = null;
+    /** Nombres de InitialColumns memoizados por su texto. */
+    private initialColumnsCache: { raw: string; names: string[] } | null = null;
+    /** Firma de los filtros memoizada por identidad del objeto (sustituye a JSON.stringify repetidos). */
+    private filtersSignatureCache: { source: any; signature: string } | null = null;
+    /** Clave de las reglas de color memoizada (texto + columnas del dataset). */
+    private rowColorsKeyCache: { raw: string; source: any[]; key: string } | null = null;
+    /** Retardo del buscador global: equilibra respuesta inmediata y trabajo por pulsación. */
+    private static readonly searchDebounceMs = 200;
+    private searchDebounceTimeout: NodeJS.Timeout | null = null;
+    /** Temporizador de la revalidación del dataset: colapsa varias peticiones seguidas en una. */
+    private forceRefreshTimeout: NodeJS.Timeout | null = null;
+    /** Contadores del diagnóstico de rendimiento (window.__mdgPerf = true). */
+    private perf = {
+        updateViews: 0,
+        renders: 0,
+        renderMs: 0,
+        maps: 0,
+        mappedRows: 0,
+        reusedRows: 0,
+        mapMs: 0,
+        filterPasses: 0,
+        filterMs: 0,
+        rowsPainted: 0
+    };
+    /** Filas que PrimeReact pintó en el render en curso (lo cuenta rowClassName). */
+    private rowsPaintedThisRender = 0;
     /** Tope de la carga de fondo para poder paginar y filtrar en cliente. */
     private static readonly maxAutoLoadedRows = 2000;
     /** Tope de la carga completa (al abrir el control y al pulsar Refrescar). */
@@ -101,6 +243,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                 return acc;
             }, {}),
             globalFilterValue: '',
+            searchText: '',
+            searchResetToken: 0,
             columns: [],
             previousParameters: {},
             enabled: props.context.parameters.IsEnabled?.raw ?? true,
@@ -116,6 +260,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
     componentDidMount() {
         (window as any).context = this.props.context;
+        // Diagnóstico opcional: con `window.__mdgPerf = true` se publican contadores y un resumen.
+        (window as any).__mdgPerfReport = () => this.logPerfReport();
         // Al abrir el control se intenta traer todo lo que ofrezca la fuente ("Items").
         this.deepLoad = true;
         this.processedRowSignature = '';
@@ -140,6 +286,65 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.clearRowColorStyles();
         this.clearPendingTimeout();
         this.clearLoadWatch();
+        this.clearSearchDebounce();
+        this.clearForceRefreshTimeout();
+
+        if (typeof window !== 'undefined' && (window as any).__mdgPerfReport) {
+            this.logPerfReport();
+            delete (window as any).__mdgPerfReport;
+        }
+    }
+
+    /** Libera el retardo del buscador global. */
+    clearSearchDebounce(): void {
+        if (this.searchDebounceTimeout) {
+            clearTimeout(this.searchDebounceTimeout);
+            this.searchDebounceTimeout = null;
+        }
+    }
+
+    /** Libera la revalidación programada del dataset. */
+    clearForceRefreshTimeout(): void {
+        if (this.forceRefreshTimeout) {
+            clearTimeout(this.forceRefreshTimeout);
+            this.forceRefreshTimeout = null;
+        }
+    }
+
+    /** true cuando el diagnóstico de rendimiento está activo (`window.__mdgPerf = true`). */
+    isPerfEnabled(): boolean {
+        return typeof window !== 'undefined' && (window as any).__mdgPerf === true;
+    }
+
+    /** Marca de tiempo para medir tramos (0 = diagnóstico desactivado, coste nulo). */
+    perfNow(): number {
+        return this.isPerfEnabled() && typeof performance !== 'undefined' ? performance.now() : 0;
+    }
+
+    /** Milisegundos transcurridos desde `started` (0 si el diagnóstico está desactivado). */
+    perfSince(started: number): number {
+        return started && typeof performance !== 'undefined' ? performance.now() - started : 0;
+    }
+
+    /**
+     * Resumen acumulado del trabajo del control. Sirve para comparar antes/después en la app:
+     * `window.__mdgPerf = true` y luego `window.__mdgPerfReport()`.
+     */
+    logPerfReport(): void {
+        const report = {
+            ...this.perf,
+            mapaMedioMs: this.perf.maps ? +(this.perf.mapMs / this.perf.maps).toFixed(2) : 0,
+            renderMedioMs: this.perf.renders ? +(this.perf.renderMs / this.perf.renders).toFixed(2) : 0,
+            filasPorMapa: this.perf.maps ? Math.round(this.perf.mappedRows / this.perf.maps) : 0,
+            filasReutilizadas: this.perf.reusedRows,
+            filasCargadas: this.state.records.length
+        };
+
+        console.log('[ModernDataGrid][perf] resumen', report);
+
+        if (console.table) {
+            console.table([report]);
+        }
     }
 
     /** Libera el temporizador de la página pendiente. */
@@ -163,6 +368,89 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         return `${dataSet.loading ? 1 : 0}|${ids.length}|${firstId}|${lastId}`;
     }
 
+    /**
+     * Clave de la estructura que obliga a reformatear todas las filas: columnas del dataset,
+     * configuración de campos, formato de fecha e idioma. Mientras no cambie, las filas ya
+     * formateadas se reutilizan (mapeo incremental por record).
+     */
+    getMappingStructureKey(
+        dataSet: ComponentFramework.PropertyTypes.DataSet,
+        context: ComponentFramework.Context<IInputs>
+    ): string {
+        return [
+            context.parameters.FieldConfigurations?.raw || "",
+            context.parameters.DateFormat?.raw || "",
+            context.parameters.Language?.raw || "",
+            this.getColumnsSchemaKey(dataSet.columns)
+        ].join(";");
+    }
+
+    /** Firma de las columnas que intervienen en el formateo (memoizada por identidad del arreglo). */
+    getColumnsSchemaKey(columns: ComponentFramework.PropertyHelper.DataSetApi.Column[]): string {
+        if (this.columnsSchemaCache && this.columnsSchemaCache.source === columns) {
+            return this.columnsSchemaCache.key;
+        }
+
+        const key = (columns || []).map((column) => `${column.name}:${column.alias}:${column.dataType}`).join("|");
+        this.columnsSchemaCache = { source: columns, key };
+
+        return key;
+    }
+
+    /**
+     * Compara dos listas de filas por referencia. Es la alternativa barata a `lodash.isEqual`:
+     * las filas reutilizadas por el mapeo incremental son las mismas instancias, por lo que solo
+     * hay cambio real cuando llegó una página nueva, se recargó la fuente o cambió el formato.
+     */
+    sameRowReferences(previous: any[], next: any[]): boolean {
+        if (previous === next) {
+            return true;
+        }
+
+        if (!previous || !next || previous.length !== next.length) {
+            return false;
+        }
+
+        for (let index = 0; index < previous.length; index++) {
+            if (previous[index] !== next[index]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Compara dos listas de cadenas (ids de registro, columnas seleccionadas) sin serializarlas. */
+    sameStringList(previous: string[] | null | undefined, next: string[] | null | undefined): boolean {
+        if (previous === next) {
+            return true;
+        }
+
+        if (!previous || !next || previous.length !== next.length) {
+            return false;
+        }
+
+        for (let index = 0; index < previous.length; index++) {
+            if (previous[index] !== next[index]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Firma de los filtros memoizada por identidad del objeto (evita JSON.stringify repetidos). */
+    filtersSignature(filters: any): string {
+        if (this.filtersSignatureCache && this.filtersSignatureCache.source === filters) {
+            return this.filtersSignatureCache.signature;
+        }
+
+        const signature = JSON.stringify(filters);
+        this.filtersSignatureCache = { source: filters, signature };
+
+        return signature;
+    }
+
     /** Libera el vigilante de carga. */
     clearLoadWatch(): void {
         if (this.loadWatchTimeout) {
@@ -174,12 +462,19 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     /**
      * Revisa en breve si llegaron más filas y continúa la carga. Es la red de seguridad para
      * cuando el host no vuelve a entrar en `componentDidUpdate` después de `loadNextPage()`.
+     * Solo se re-mapea cuando la firma de filas cambió: así la red de seguridad no reformatea la
+     * cuadrícula entera cuando la fuente no entregó nada nuevo.
      */
     scheduleLoadWatch(): void {
         this.clearLoadWatch();
         this.loadWatchTimeout = setTimeout(() => {
             this.loadWatchTimeout = null;
-            this.mapRecordsToState(true);
+            const dataSet = this.props.context.parameters.DataSource;
+
+            if (this.getRowSignature(dataSet) !== this.mappedRowSignature) {
+                this.mapRecordsToState(true);
+            }
+
             this.ensureMoreRowsLoaded();
             this.forceUpdate();
         }, 400);
@@ -365,16 +660,31 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return;
         }
 
-        const cacheKey = [
-            this.getRowSignature(dataSet),
-            context.parameters.FieldConfigurations?.raw || "",
-            context.parameters.DateFormat?.raw || "",
-            context.parameters.Language?.raw || "",
-            dataSet.columns.map((column) => `${column.name}:${column.alias}:${column.dataType}`).join("|")
-        ].join(";");
+        const structureKey = this.getMappingStructureKey(dataSet, context);
+        const rowSignature = this.getRowSignature(dataSet);
+        const cacheKey = `${rowSignature};${structureKey}`;
         if (!force && this.mappedRecordsCache?.key === cacheKey) {
             return;
         }
+
+        // Se reformatea todo cuando cambia la estructura, cuando la app pide recargar la fuente o
+        // cuando el host revalida con `force` y la firma de filas no cambió (en ese caso no hay
+        // forma barata de saber si algún valor cambió en el sitio: se mantiene el comportamiento
+        // conservador anterior). Si solo llegaron páginas nuevas, las filas ya formateadas se
+        // reutilizan y únicamente se formatea lo que llegó.
+        const reformatAll =
+            structureKey !== this.mappedStructureKey ||
+            this.invalidateMappedRows ||
+            (force && rowSignature === this.mappedRowSignature);
+
+        if (reformatAll) {
+            this.mappedRowCache.clear();
+            this.searchTextCache = new WeakMap<object, string>();
+        }
+
+        this.mappedStructureKey = structureKey;
+        this.mappedRowSignature = rowSignature;
+        this.invalidateMappedRows = false;
 
         const columnDescriptors = dataSet.columns.map((col) => ({
             column: col,
@@ -382,34 +692,66 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             handler: typeHandlers[col.dataType]
         }));
 
-        const records = dataSet.sortedRecordIds.map((recordId) => {
+        const started = this.perfNow();
+        const ids = dataSet.sortedRecordIds;
+        const records: any[] = [];
+        let reusedRows = 0;
+
+        for (let index = 0; index < ids.length; index++) {
+            const recordId = ids[index];
             const record = dataSet.records[recordId];
             if (!record) {
                 //console.log(`Record ID ${recordId} not found in dataSet.records.`);
-                return null;
+                continue;
             }
-            const processedRecord = {
-                id: recordId,
-                ...columnDescriptors.reduce((rec: Record<string, any>, descriptor) => {
-                    const col = descriptor.column;
-                    const value = record.getValue(col.alias);
-                    const colType = col.dataType;
-                    //Decimal SingleLine.Text
-                    try {
-                        // Use the typeHandlers map to process the column type
-                        rec[col.name] = descriptor.handler
-                            ? descriptor.handler(value, descriptor.config, context)
-                            : value; // Default case for unsupported data types
-                    } catch (error) {
-                        console.error(`Error processing column "${col.name}" of type "${colType}":`, error);
-                        rec[col.name] = value; // Fallback to raw value
-                    }
-                    return rec;
-                }, {}),
-            };
 
-            return processedRecord;
-        }).filter(Boolean);
+            // Mapeo incremental: si el record es el mismo objeto y la estructura no cambió, la fila
+            // ya formateada se reutiliza tal cual (no se repiten Intl, date-fns ni los handlers).
+            const cached = this.mappedRowCache.get(recordId);
+            if (cached && cached.record === record) {
+                reusedRows++;
+                records.push(cached.mapped);
+                continue;
+            }
+
+            const processedRecord: Record<string, any> = { id: recordId };
+
+            for (let columnIndex = 0; columnIndex < columnDescriptors.length; columnIndex++) {
+                const descriptor = columnDescriptors[columnIndex];
+                const col = descriptor.column;
+                const value = record.getValue(col.alias);
+                const colType = col.dataType;
+                //Decimal SingleLine.Text
+                try {
+                    // Use the typeHandlers map to process the column type
+                    processedRecord[col.name] = descriptor.handler
+                        ? descriptor.handler(value, descriptor.config, context)
+                        : value; // Default case for unsupported data types
+                } catch (error) {
+                    console.error(`Error processing column "${col.name}" of type "${colType}":`, error);
+                    processedRecord[col.name] = value; // Fallback to raw value
+                }
+            }
+
+            this.mappedRowCache.set(recordId, { record, mapped: processedRecord });
+            records.push(processedRecord);
+        }
+
+        // Filas que la fuente ya no entrega: se sueltan para que el caché no crezca sin control.
+        if (this.mappedRowCache.size > ids.length) {
+            const currentIds = new Set(ids);
+            this.mappedRowCache.forEach((_entry, cachedId) => {
+                if (!currentIds.has(cachedId)) {
+                    this.mappedRowCache.delete(cachedId);
+                }
+            });
+        }
+
+        this.mappedRecordsCache = { key: cacheKey, records };
+        this.perf.maps++;
+        this.perf.mappedRows += records.length;
+        this.perf.reusedRows += reusedRows;
+        this.perf.mapMs += this.perfSince(started);
 
         this.mappedRecordsCache = { key: cacheKey, records };
 
@@ -417,8 +759,13 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         //console.log('Columns:', dataSet.columns);
 
         this.setState(prevState => {
-            const isRecordsChanged = !isEqual(prevState.records, records);
-            const isColumnsChanged = !isEqual(prevState.columns, dataSet.columns);
+            // Comparación por referencias (equivalente a isEqual pero O(n) de punteros): el mapeo
+            // incremental reutiliza las mismas instancias, así que no hay cambio real salvo que
+            // haya llegado una página, se recargue la fuente o cambie el formato.
+            const isRecordsChanged = !this.sameRowReferences(prevState.records, records);
+            const isColumnsChanged =
+                !this.areColumnsEqual(prevState.columns, dataSet.columns) ||
+                this.getColumnsSchemaKey(prevState.columns) !== this.getColumnsSchemaKey(dataSet.columns);
 
             if (isRecordsChanged || isColumnsChanged) {
                 //console.log('Updating state with new records and columns.');
@@ -469,8 +816,11 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.applyPendingPage();
 
         const dataSourceChanged = prevProps.context.parameters.DataSource !== this.props.context.parameters.DataSource;
-        const sortedRecordIdsChanged =
-            JSON.stringify(prevProps.context.parameters.DataSource.sortedRecordIds) !== JSON.stringify(dataSet.sortedRecordIds);
+        // Comparación elemento a elemento (10.000 ids ≈ 0,1 ms) en vez de dos JSON.stringify.
+        const sortedRecordIdsChanged = !this.sameStringList(
+            prevProps.context.parameters.DataSource.sortedRecordIds,
+            dataSet.sortedRecordIds
+        );
 
         if (rowsChanged) {
             this.logPaginationInfo();
@@ -478,26 +828,24 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             this.extraPageDismissed = false;
         }
 
-        const filtersChanged = JSON.stringify(prevState.filters) !== JSON.stringify(this.state.filters);
+        const filtersChanged = this.filtersSignature(prevState.filters) !== this.filtersSignature(this.state.filters);
         const prevFieldConfigurations = prevProps.context.parameters.FieldConfigurations?.raw || "";
-    const currentFieldConfigurations = this.props.context.parameters.FieldConfigurations?.raw || "";
-    
-        const fieldConfigurationsChanged = prevFieldConfigurations !== currentFieldConfigurations;
+        const currentFieldConfigurations = this.props.context.parameters.FieldConfigurations?.raw || "";
 
+        const fieldConfigurationsChanged = prevFieldConfigurations !== currentFieldConfigurations;
 
         const structuralChange =
             dataSourceChanged || sortedRecordIdsChanged || filtersChanged || fieldConfigurationsChanged;
 
         if (structuralChange || rowsChanged) {
-            console.log("Changes detected in DataSource, records, filters, or FieldConfigurations. Updating state.");
             this.mapRecordsToState();
 
             if (structuralChange) {
                 this.forceRefreshDataset();
-            } else {
-                // Página nueva o recarga de la fuente: basta con repintar lo que ya está mapeado.
-                this.forceUpdate();
             }
+            // Nota: cuando solo llegan filas nuevas, el `setState` del mapeo ya repinta (las filas
+            // nuevas son instancias nuevas y `shouldComponentUpdate` lo detecta); el `forceUpdate`
+            // que había aquí provocaba un segundo render completo por cada página.
             //this.setState({ previousFieldConfigurations: currentFieldConfigurations });
         }
 
@@ -505,7 +853,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             //console.log('Columns have changed. Updating filters.');
             const newFilters = this.updateFilters(dataSet.columns, prevState.filters);
 
-            if (JSON.stringify(prevState.filters) !== JSON.stringify(newFilters)) {
+            if (this.filtersSignature(prevState.filters) !== this.filtersSignature(newFilters)) {
                 //console.log('Filters have changed. Updating state.');
                 this.setState({ filters: newFilters, needsRefresh: true });
                 this.forceRefreshDataset();
@@ -513,6 +861,15 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }
 
         if (prevState.needsRefresh !== this.state.needsRefresh) {
+            if (this.state.needsRefresh) {
+                // La revalidación se consume una sola vez. Antes vivía dentro de
+                // `shouldComponentUpdate` (efecto secundario) y, cuando el mapeo no cambiaba nada,
+                // la bandera seguía activa y se volvía a refrescar la fuente en cada render.
+                this.setState({ needsRefresh: false });
+                this.invalidateMappedRows = true;
+                dataSet.refresh();
+            }
+
             this.checkAndStartInterval();
             this.forceRefreshDataset();
         }
@@ -562,11 +919,22 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         if (this.getRowSignature(nextProps.context.parameters.DataSource) !== this.processedRowSignature) {
             return true;
         }
-        const parameterKeys: (keyof IInputs)[] = Object.keys(nextProps.context.parameters) as (keyof IInputs)[];
-        const needsRefresh = nextState.needsRefresh;
-        if (needsRefresh) {
-            this.props.context.parameters.DataSource.refresh();
+        // Cambios de estado visibles: se repinta sin depender de `forceUpdate`, de modo que los
+        // `setState` de selección, buscador y paginación no necesitan provocar un render extra.
+        if (
+            this.state.records !== nextState.records ||
+            this.state.selectedRecordIds !== nextState.selectedRecordIds ||
+            this.state.selectedRecords !== nextState.selectedRecords ||
+            this.state.globalFilterValue !== nextState.globalFilterValue ||
+            this.state.searchText !== nextState.searchText
+        ) {
+            return true;
         }
+
+        const parameterKeys: (keyof IInputs)[] = Object.keys(nextProps.context.parameters) as (keyof IInputs)[];
+        // Nota: la revalidación del dataset (`needsRefresh`) la consume `componentDidUpdate`.
+        // Aquí ya no se llama a `DataSource.refresh()`: era un efecto secundario que, con la
+        // bandera activa, refrescaba la fuente en cada intento de render.
         for (const key of parameterKeys) {
             const nextParam = nextProps.context.parameters[key];
             const previousParam = this.state.previousParameters[key];
@@ -598,12 +966,12 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return true;
         }
 
-        if (JSON.stringify(this.state.filters) !== JSON.stringify(nextState.filters)) {
+        if (this.filtersSignature(this.state.filters) !== this.filtersSignature(nextState.filters)) {
             //console.log("Filters have changed. Component should update.");
             return true;
         }
 
-        if (JSON.stringify(this.state.selectedColumns) !== JSON.stringify(nextState.selectedColumns)) {
+        if (!this.sameStringList(this.state.selectedColumns, nextState.selectedColumns)) {
             //console.log("Column selection has changed. Component should update.");
             return true;
         }
@@ -625,18 +993,46 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         return false;
     }
 
-    onGlobalFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value;
+    /**
+     * El buscador avisa en cada tecla y el filtrado efectivo (que recorre todo el dataset y hace
+     * que PrimeReact vuelva a filtrar) se aplica con un retardo corto: escribir una palabra ya no
+     * dispara un filtrado completo por pulsación ni repinta la cuadrícula.
+     */
+    onSearchTextChange = (value: string) => {
+        this.scheduleGlobalFilter(value);
+    };
+
+    /** Aplica el buscador al instante (al pulsar Enter o salir del campo), sin esperar el retardo. */
+    onSearchSubmit = (value: string) => {
+        this.applyGlobalFilter(value);
+    };
+
+    /** Programa la aplicación del buscador global (se reinicia mientras el usuario escribe). */
+    scheduleGlobalFilter(value: string): void {
+        this.clearSearchDebounce();
+        this.searchDebounceTimeout = setTimeout(() => {
+            this.searchDebounceTimeout = null;
+            this.applyGlobalFilter(value);
+        }, DataGrid.searchDebounceMs);
+    }
+
+    /** Aplica el valor del buscador global al modelo de filtros de la tabla. */
+    applyGlobalFilter(value: string): void {
+        this.clearSearchDebounce();
+
+        if (this.state.globalFilterValue === value && this.state.filters?.global) {
+            return;
+        }
+
         this.setState({
             globalFilterValue: value,
+            searchText: value,
             filters: {
                 ...this.state.filters,
                 global: { value, matchMode: FilterMatchMode.CONTAINS }
             }
-        }, () => {
-            this.forceUpdate();
         });
-    };
+    }
 
     refreshData = () => {
         const dataSet = this.props.context.parameters.DataSource;
@@ -652,18 +1048,18 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.processedRowSignature = '';
         this.clearPendingTimeout();
         this.clearLoadWatch();
-        this.setState(
-            {
-                gridEpoch: this.state.gridEpoch + 1,
-                currentPage: 1,
-                pendingPage: null,
-                selectedRecordIds: [],
-                selectedRecords: []
-            },
-            () => this.forceUpdate()
-        );
+        this.setState({
+            gridEpoch: this.state.gridEpoch + 1,
+            currentPage: 1,
+            pendingPage: null,
+            selectedRecordIds: [],
+            selectedRecords: []
+        });
 
         // Pedir de nuevo los datos a la fuente de origen y repintar cuando responda.
+        // Se fuerza el reformateo de las filas: la fuente puede devolver los mismos ids con valores
+        // nuevos y el caché incremental no debe reutilizar lo anterior.
+        this.invalidateMappedRows = true;
         dataSet.refresh();
         this.props.notifyOutputChanged();
         this.forceRefreshDataset();
@@ -671,11 +1067,21 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.requestWholeSource();
     };
 
+    /** Nombres de InitialColumns normalizados (memoizados por el texto de la propiedad). */
     getInitialColumnNames(): string[] {
-        return (this.props.context.parameters.InitialColumns?.raw || '')
+        const raw = this.props.context.parameters.InitialColumns?.raw || '';
+
+        if (this.initialColumnsCache?.raw === raw) {
+            return this.initialColumnsCache.names;
+        }
+
+        const names = raw
             .split(',')
             .map((column) => normalizeText(column))
             .filter(Boolean);
+        this.initialColumnsCache = { raw, names };
+
+        return names;
     }
 
     /** Etiquetas personalizadas de columnas (propiedad ColumnLabels), resueltas por columna. */
@@ -703,16 +1109,28 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     /** Columnas disponibles para el control (respeta InitialColumns cuando está definido). */
     getBaseColumns(): ComponentFramework.PropertyHelper.DataSetApi.Column[] {
         const columns = this.props.context.parameters.DataSource.columns;
+        const raw = this.props.context.parameters.InitialColumns?.raw || '';
+
+        if (this.baseColumnsCache && this.baseColumnsCache.source === columns && this.baseColumnsCache.raw === raw) {
+            return this.baseColumnsCache.columns;
+        }
+
         const requestedColumns = this.getInitialColumnNames();
-        if (!requestedColumns.length) return columns;
+        let baseColumns: ComponentFramework.PropertyHelper.DataSetApi.Column[] = columns;
 
-        const labels = this.getColumnLabels();
+        if (requestedColumns.length) {
+            const labels = this.getColumnLabels();
 
-        return columns.filter((column) =>
-            [column.name, column.alias, column.displayName, labels[column.name]]
-                .filter(Boolean)
-                .some((name) => requestedColumns.includes(normalizeText(String(name))))
-        );
+            baseColumns = columns.filter((column) =>
+                [column.name, column.alias, column.displayName, labels[column.name]]
+                    .filter(Boolean)
+                    .some((name) => requestedColumns.includes(normalizeText(String(name))))
+            );
+        }
+
+        this.baseColumnsCache = { source: columns, raw, columns: baseColumns };
+
+        return baseColumns;
     }
 
     /** Opciones que el usuario final puede marcar o desmarcar en el selector. */
@@ -733,7 +1151,120 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         const selectedColumns = this.state.selectedColumns;
         if (!selectedColumns) return baseColumns;
 
-        return baseColumns.filter((column) => selectedColumns.includes(column.name));
+        if (
+            this.visibleColumnsCache &&
+            this.visibleColumnsCache.base === baseColumns &&
+            this.visibleColumnsCache.selected === selectedColumns
+        ) {
+            return this.visibleColumnsCache.columns;
+        }
+
+        const columns = baseColumns.filter((column) => selectedColumns.includes(column.name));
+        this.visibleColumnsCache = { base: baseColumns, selected: selectedColumns, columns };
+
+        return columns;
+    }
+
+    /** Tamaños de página del pie (memoizado por tamaño activo: identidad estable en cada render). */
+    getRowsPerPageOptions(): number[] {
+        const pageSize = this.getPageSize();
+
+        if (this.rowsPerPageCache?.pageSize === pageSize) {
+            return this.rowsPerPageCache.options;
+        }
+
+        const options = Array.from(new Set([...BASE_ROWS_PER_PAGE, pageSize])).sort((a, b) => a - b);
+        this.rowsPerPageCache = { pageSize, options };
+
+        return options;
+    }
+
+    /** Campos que PrimeReact usa para la búsqueda global (memoizado por columnas). */
+    getGlobalFilterFields(): string[] {
+        const columns = this.state.columns || [];
+
+        if (this.globalFilterFieldsCache?.source === columns) {
+            return this.globalFilterFieldsCache.fields;
+        }
+
+        const fields = columns.map((col) => col.name);
+        this.globalFilterFieldsCache = { source: columns, fields };
+
+        return fields;
+    }
+
+    /** Renderizador estable de una columna: misma identidad en cada render (no invalida el memo). */
+    getColumnBodyRenderer(columnName: string): (item: Record<string, any>) => any {
+        let renderer = this.columnBodyCache.get(columnName);
+
+        if (!renderer) {
+            renderer = (item: Record<string, any>) => this.renderItemColumn(item, columnName);
+            this.columnBodyCache.set(columnName, renderer);
+        }
+
+        return renderer;
+    }
+
+    /** Estilo estable de una columna (misma identidad por columna en todos los renders). */
+    getColumnStyle(columnName: string): React.CSSProperties {
+        let style = this.columnStyleCache.get(columnName);
+
+        if (!style) {
+            style = { ...COLUMN_STYLE };
+            this.columnStyleCache.set(columnName, style);
+        }
+
+        return style;
+    }
+
+    /** Valor que se pinta en una celda (misma lógica que el render original de columna). */
+    renderItemColumn(item: Record<string, any> | undefined, columnName: string): any {
+        if (!item || !columnName) {
+            return null;
+        }
+
+        const value = item[columnName];
+
+        if (value && typeof value === 'object' && value.toString) {
+            return value.toString();
+        }
+
+        return value ?? '';
+    }
+
+    /** Filas seleccionadas que recibe el DataTable, memoizadas por identidad de filas y de ids. */
+    getSelectedRecordsForTable(records: any[]): any[] {
+        const selectedRecordIds = this.state.selectedRecordIds;
+
+        if (
+            this.selectionCache &&
+            this.selectionCache.records === records &&
+            this.selectionCache.ids === selectedRecordIds
+        ) {
+            return this.selectionCache.selected;
+        }
+
+        // Set de ids: la selección pasa de O(filas x seleccionados) a O(filas + seleccionados).
+        const selectedIds = new Set(selectedRecordIds);
+        const selected = records.filter((record) => selectedIds.has(record.id));
+        this.selectionCache = { records, ids: selectedRecordIds, selected };
+
+        return selected;
+    }
+
+    /** Plantilla del reporte del pie (memoizada por idioma y recuento filtrado). */
+    getPageReportTemplate(): string {
+        const filteredCount = this.getFilteredRecordCount();
+        const key = `${this.getLanguage()}|${filteredCount}`;
+
+        if (this.pageReportCache?.key === key) {
+            return this.pageReportCache.template;
+        }
+
+        const template = formatTemplate(this.getStrings().pageReport, { filtered: String(filteredCount) });
+        this.pageReportCache = { key, template };
+
+        return template;
     }
 
     getFilteredRecords(records: any[]): any[] {
@@ -743,14 +1274,41 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             return this.filteredRecordsCache.records;
         }
 
-        const filteredRecords = records.filter((record) =>
-            this.state.columns.some((column) =>
-                String(record[column.name] ?? '').toLowerCase().includes(searchTerm)
-            )
-        );
+        const started = this.perfNow();
+        // El texto buscable de cada fila se calcula una sola vez (WeakMap) y se reutiliza entre
+        // pulsaciones: la búsqueda pasa de O(filas x columnas) a O(filas).
+        const filteredRecords = records.filter((record) => this.getRecordSearchText(record).indexOf(searchTerm) !== -1);
         this.filteredRecordsCache = { source: records, search: searchTerm, records: filteredRecords };
 
+        this.perf.filterPasses++;
+        this.perf.filterMs += this.perfSince(started);
+
         return filteredRecords;
+    }
+
+    /** Texto buscable (minúsculas) de una fila: se conserva mientras la fila siga siendo la misma. */
+    getRecordSearchText(record: Record<string, any>): string {
+        const cached = this.searchTextCache.get(record);
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const columns = this.state.columns;
+        let text = '';
+
+        for (let index = 0; index < columns.length; index++) {
+            const value = record[columns[index].name];
+
+            if (value === null || value === undefined) {
+                continue;
+            }
+
+            text += String(value).toLowerCase() + SEARCH_TEXT_SEPARATOR;
+        }
+
+        this.searchTextCache.set(record, text);
+
+        return text;
     }
 
     onSelectionChange = (e: any) => {
@@ -763,14 +1321,17 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.setState({
             selectedRecordIds: newSelectedRecordIds,
             selectedRecords: e.value,
-        }, () => {
-            this.forceUpdate();
         });
     };
 
     onColumnSelectionChange = (event: any) => {
         const value = Array.isArray(event?.value) ? (event.value as string[]) : [];
         this.setState({ selectedColumns: value });
+    };
+
+    /** Filtros de columna de PrimeReact: callback estable (no invalida la memoización de la tabla). */
+    onFilterChange = (event: any) => {
+        this.setState({ filters: event.filters });
     };
 
     /** Estado de filtros completo: garantiza un modelo por cada columna del dataset. */
@@ -915,29 +1476,80 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.appliedLanguage = language;
     }
 
+    /** Clave de las reglas de color (texto + columnas), memoizada por identidad de columnas. */
+    getRowColorsKey(): string {
+        const raw = this.props.context.parameters.RowColorRules?.raw || '';
+        const source = this.props.context.parameters.DataSource.columns || [];
+
+        if (this.rowColorsKeyCache && this.rowColorsKeyCache.raw === raw && this.rowColorsKeyCache.source === source) {
+            return this.rowColorsKeyCache.key;
+        }
+
+        const labels = this.getColumnLabels();
+        const key = `${raw}|${source
+            .map((column) => `${column.name}:${column.displayName}:${labels[column.name] || ''}`)
+            .join(',')}`;
+        this.rowColorsKeyCache = { raw, source, key };
+
+        return key;
+    }
+
     /** Configuración de colores de fila compilada (se recompila si cambia el texto o las columnas). */
     getRowColors(): CompiledRowColors {
-        const raw = this.props.context.parameters.RowColorRules?.raw || '';
-        const labels = this.getColumnLabels();
-        const columns = (this.props.context.parameters.DataSource.columns || []).map((column) => ({
-            name: column.name,
-            alias: column.alias,
-            displayName: column.displayName,
-            label: labels[column.name]
-        }));
-        const key = `${raw}|${columns.map((column) => `${column.name}:${column.displayName}:${column.label || ''}`).join(',')}`;
+        const key = this.getRowColorsKey();
 
         if (!this.rowColorsCache || this.rowColorsCache.key !== key) {
+            const raw = this.props.context.parameters.RowColorRules?.raw || '';
+            const labels = this.getColumnLabels();
+            const columns = (this.props.context.parameters.DataSource.columns || []).map((column) => ({
+                name: column.name,
+                alias: column.alias,
+                displayName: column.displayName,
+                label: labels[column.name]
+            }));
+
             this.rowColorsCache = { key, compiled: compileRowColors(raw, columns) };
+            // Cambiaron las reglas: las clases ya calculadas dejan de ser válidas.
+            this.rowClassByRow = new WeakMap<object, string>();
+            this.rowClassRulesKey = key;
         }
 
         return this.rowColorsCache.compiled;
     }
 
-    /** Clase de color de la fila según RowColorRules (cadena vacía si no aplica). */
+    /**
+     * Clase de color de la fila. Se calcula una sola vez por fila y por conjunto de reglas
+     * (WeakMap), así que PrimeReact puede pedirla para cada fila pintada sin reevaluar las reglas
+     * ni reconstruir la clave de configuración.
+     */
     getRowClassName(record: Record<string, any>): string {
-        return this.getRowColors().classNameFor(record);
+        this.rowsPaintedThisRender++;
+
+        const rulesKey = this.getRowColorsKey();
+
+        if (this.rowClassRulesKey !== rulesKey) {
+            this.rowClassByRow = new WeakMap<object, string>();
+            this.rowClassRulesKey = rulesKey;
+        }
+
+        if (!record || typeof record !== 'object') {
+            return record ? this.getRowColors().classNameFor(record) : '';
+        }
+
+        const cached = this.rowClassByRow.get(record);
+
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const className = this.getRowColors().classNameFor(record);
+        this.rowClassByRow.set(record, className);
+
+        return className;
     }
+
+    /** Callback estable de clases de fila (misma identidad en todos los renders). */
+    rowClassName = (row: any) => this.getRowClassName(row);
 
     /** Publica las reglas de color en una hoja de estilos propia de este control. */
     syncRowColorStyles(): void {
@@ -1002,7 +1614,13 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                             <InputIcon>
                                 <SearchIcon />
                             </InputIcon>
-                            <InputText value={this.state.globalFilterValue} onChange={this.onGlobalFilterChange} placeholder={strings.keywordSearch} />
+                            <SearchBox
+                                value={this.state.searchText}
+                                resetToken={this.state.searchResetToken}
+                                placeholder={strings.keywordSearch}
+                                onChange={this.onSearchTextChange}
+                                onFlush={this.onSearchSubmit}
+                            />
                         </IconField>
                     )}
                     <Button
@@ -1064,8 +1682,18 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         return [];
     }
 
+    /**
+     * Revalida el dataset y repinta. Varias peticiones seguidas (montaje, cambio de columnas,
+     * filtros…) se agrupan en una sola: el mapeo lee el dataset cuando se ejecuta, así que no se
+     * pierde ninguna fila y se evitan repintados encadenados.
+     */
     forceRefreshDataset = () => {
-        setTimeout(() => {
+        if (this.forceRefreshTimeout) {
+            return;
+        }
+
+        this.forceRefreshTimeout = setTimeout(() => {
+            this.forceRefreshTimeout = null;
             this.props.notifyOutputChanged();
             this.mapRecordsToState(true);
             this.forceUpdate();
@@ -1130,14 +1758,23 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         const pageSize = this.getPageSize();
         const loadedRows = this.getFilteredRecordCount();
         const extraPage = this.hasMoreRowsInSource() ? pageSize : 0;
+        const key = `${paginator}|${pageSize}|${loadedRows}|${extraPage}|${this.state.currentPage}`;
 
-        return {
+        // Objeto memoizado: PrimeReact recibe la misma identidad mientras nada cambie.
+        if (this.paginationPropsCache?.key === key) {
+            return this.paginationPropsCache.props;
+        }
+
+        const props = {
             paginator,
             rows: pageSize,
             totalRecords: loadedRows + extraPage,
             first: (this.state.currentPage - 1) * pageSize,
             onPage: this.onPageChange
         };
+        this.paginationPropsCache = { key, props };
+
+        return props;
     }
 
     /** Navegación del pie: mueve la vista o pide a la fuente las filas que falten. */
@@ -1150,9 +1787,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         if (rows > 0 && rows !== pageSize) {
             this.autoLoadFrom = -1;
             this.extraPageDismissed = false;
-            this.setState({ pageSizeOverride: rows, currentPage: 1, pendingPage: null }, () => {
-                this.forceUpdate();
-            });
+            this.setState({ pageSizeOverride: rows, currentPage: 1, pendingPage: null });
 
             return;
         }
@@ -1165,13 +1800,13 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
         // Página ya cargada: la vista se mueve al instante.
         if (targetPage <= this.getLoadedPageCount()) {
-            this.setState({ currentPage: targetPage }, () => this.forceUpdate());
+            this.setState({ currentPage: targetPage });
 
             return;
         }
 
         // Página más allá de lo cargado: se piden más filas a la fuente.
-        this.setState({ pendingPage: targetPage }, () => this.forceUpdate());
+        this.setState({ pendingPage: targetPage });
         this.requestMoreRows();
     };
 
@@ -1190,7 +1825,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                 console.log('[ModernDataGrid] la fuente no entregó más filas para la página solicitada');
 
                 this.extraPageDismissed = true;
-                this.setState({ pendingPage: null }, () => this.forceUpdate());
+                this.setState({ pendingPage: null });
             }
         }, 6000);
     }
@@ -1209,7 +1844,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                 this.pendingTimeout = null;
             }
 
-            this.setState({ currentPage: pendingPage, pendingPage: null }, () => this.forceUpdate());
+            this.setState({ currentPage: pendingPage, pendingPage: null });
 
             return;
         }
@@ -1241,7 +1876,7 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }
 
         if (this.state.pageSizeOverride !== this.displayPageSize) {
-            this.setState({ pageSizeOverride: this.displayPageSize }, () => this.forceUpdate());
+            this.setState({ pageSizeOverride: this.displayPageSize });
         }
 
         if (currentPageSize >= DataGrid.maxLoadedRows) {
@@ -1363,11 +1998,14 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.extraPageDismissed = false;
         this.emptyLoadAttempts = 0;
         this.clearPendingTimeout();
+        this.clearSearchDebounce();
 
         this.setState(
             {
                 filters: clearedFilters,
                 globalFilterValue: '',
+                searchText: '',
+                searchResetToken: this.state.searchResetToken + 1,
                 gridEpoch: this.state.gridEpoch + 1,
                 currentPage: 1,
                 pendingPage: null
@@ -1375,7 +2013,6 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             () => {
                 this.requestWholeSource();
                 this.ensureMoreRowsLoaded();
-                this.forceUpdate();
             }
         );
     };
@@ -1406,8 +2043,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
     render() {
         const { context } = this.props;
+        const started = this.perfNow();
         const strings = this.getStrings();
-        const { selectedRecordIds } = this.state;
         const filters = this.getFiltersForTable();
         const records = this.getFilteredRecords(this.state.records);
         const header = this.renderHeader();
@@ -1421,42 +2058,24 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             : "multiple";
         const allowSorting = context.parameters.AllowSorting?.raw ?? false;
         const allowFiltering = context.parameters.AllowFiltering?.raw ?? false;
-        const rowsPerPageOptions = Array.from(new Set([5, 15, 25, this.getPageSize()])).sort((a, b) => a - b);
+        const rowsPerPageOptions = this.getRowsPerPageOptions();
         const visibleColumns = this.getVisibleColumns();
 
-        const onRenderItemColumn = (
-            item?: Record<string, any>,
-            index?: number,
-            column?: IColumn,
-        ) => {
-            //console.log("Rendering item column:");
-            //console.log("Item:", item);
-            //console.log("Index:", item?.id);
-            //console.log("Column:", column);
+        this.perf.renders++;
+        const rowsPaintedLastRender = this.rowsPaintedThisRender;
+        this.perf.rowsPainted += rowsPaintedLastRender;
+        this.rowsPaintedThisRender = 0;
 
-            if (column && column.fieldName && item) {
-                const value = item[column.fieldName];
-                //console.log(`Value for field '${column.fieldName}':`, value);
-
-                if (value && typeof value === 'object' && value.toString) {
-                    //console.log("Value is an object, using toString():", value.toString());
-                    return value.toString();
-                }
-
-                if (value == null) {
-                    //console.log(`Value for field '${column.fieldName}' is null or undefined.`);
-                }
-
-                return value ?? '';
-            }
-
-            //console.log("Returning null for the column render.");
-            return null;
-        };
-
-        type IColumn = {
-            fieldName: string;
-        };
+        if (this.isPerfEnabled()) {
+            console.log('[ModernDataGrid][perf] render', {
+                render: this.perf.renders,
+                filasCargadas: this.state.records.length,
+                filasFiltradas: records.length,
+                columnasVisibles: visibleColumns.length,
+                filasPintadasRenderAnterior: rowsPaintedLastRender,
+                ms: +this.perfSince(started).toFixed(2)
+            });
+        }
 
 
         return (
@@ -1487,38 +2106,42 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
 
                     dataKey="id"
                     selectionMode={selectionMode}
-                    selection={records.filter(record => selectedRecordIds.includes(record.id))}
+                    selection={this.getSelectedRecordsForTable(records)}
                     onSelectionChange={this.onSelectionChange}
                     filters={filters}
-                    onFilter={(event: any) => this.setState({ filters: event.filters })}
+                    onFilter={this.onFilterChange}
                     filterDisplay={filterDisplayType as "menu" | "row"}
-                    globalFilterFields={this.state.columns.map(col => col.name)}
+                    globalFilterFields={this.getGlobalFilterFields()}
                     emptyMessage={emptyMessage}
-                    currentPageReportTemplate={formatTemplate(strings.pageReport, { filtered: String(this.getFilteredRecordCount()) })}
+                    currentPageReportTemplate={this.getPageReportTemplate()}
                     scrollable
                     scrollHeight="flex"
-                    virtualScrollerOptions={{ itemSize: 38 }}
-                    rowClassName={(row: any) => this.getRowClassName(row)}
+                    virtualScrollerOptions={VIRTUAL_SCROLLER_OPTIONS}
+                    rowClassName={this.rowClassName}
                     className="modern-data-grid-table"
-                    style={{ width: '100%', minWidth: '0' }}
+                    style={TABLE_STYLE}
 
                 >
-                    <Column selectionMode="multiple" headerStyle={{ width: '3rem' }}></Column>
-                    {visibleColumns.map((col, index) => (
-                        <Column
-                            key={index}
-                            field={col.name}
-                            header={this.getColumnHeader(col)}
-                            sortable={allowSorting}
-                            filter={allowFiltering}
-                            filterMatchMode={FilterMatchMode.CONTAINS}
-                            filterPlaceholder={formatTemplate(strings.searchByColumn, { column: this.getColumnHeader(col) })}
-                            showFilterMatchModes
-                            showApplyButton={false}
-                            style={{ minWidth: '12rem' }}
-                            body={(item) => onRenderItemColumn(item, undefined, { fieldName: col.name } as IColumn)}
-                        />
-                    ))}
+                    <Column selectionMode="multiple" headerStyle={SELECTION_COLUMN_HEADER_STYLE}></Column>
+                    {visibleColumns.map((col) => {
+                        const columnHeader = this.getColumnHeader(col);
+
+                        return (
+                            <Column
+                                key={col.name}
+                                field={col.name}
+                                header={columnHeader}
+                                sortable={allowSorting}
+                                filter={allowFiltering}
+                                filterMatchMode={FilterMatchMode.CONTAINS}
+                                filterPlaceholder={formatTemplate(strings.searchByColumn, { column: columnHeader })}
+                                showFilterMatchModes
+                                showApplyButton={false}
+                                style={this.getColumnStyle(col.name)}
+                                body={this.getColumnBodyRenderer(col.name)}
+                            />
+                        );
+                    })}
                 </DataTable>
             </div>
         );
