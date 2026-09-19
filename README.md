@@ -45,18 +45,42 @@ To ensure the custom component runs properly, you must first enable code compone
    ![modernDataGrid_1](https://github.com/user-attachments/assets/b35ca823-4bc3-4544-be02-b19fd31daa21)
 
 
-## Input Parameters
+## Properties (inputs)
 
-| Input              | Values                                        |
-|--------------------|-----------------------------------------------|
-| `enabled`          | `true`, `false`                               |
-| `displayHeader`    | `true`, `false`                               |
-| `headerText`       | Custom text string                            |
-| `displaySearch`    | `true`, `false`                               |
-| `displayPagination`| `true`, `false`                               |
-| `allowFiltering`   | `true`, `false`                               |
-| `allowSorting`     | `true`, `false`                               |
-| `defaultRows`      | Numeric value (e.g., `10`, `25`, `50`)        |
-| `emptyMessage`     | Custom text string                            |
-| `selectionMode`    | `multiple`, `checkbox`                        |
-| `filterDisplayType`| `menu`, `row`                                 |
+This is a **dataset** control: its data comes from the `DataSource` data set property. Full reference, per-property detail and copy-ready examples: [DOCUMENTATION.md §5](DOCUMENTATION.md).
+
+| Property | Type | Values | Default | Example |
+|---|---|---|---|---|
+| `DataSource` (data set) | Data set | any table or collection | — | `Items` |
+| `DisplayHeader` | Two options | `true` / `false` | `true` | `true` |
+| `HeaderText` | Text | free text | entity name | `Accounts 2026` |
+| `DisplaySearch` | Two options | `true` / `false` | `false` | `true` |
+| `DisplayPagination` | Two options | `true` / `false` | `false` | `true` |
+| `EmptyMessage` | Text | free text | `No records found` | `Nothing to show` |
+| `SelectionMode` | Text | `multiple` / `checkbox` | `multiple` | `checkbox` |
+| `AllowSorting` | Two options | `true` / `false` | `false` | `true` |
+| `AllowFiltering` | Two options | `true` / `false` | `false` | `true` |
+| `IsEnabled` | Two options | `true` / `false` | `true` | `true` |
+| `FieldConfigurations` | Text area | `column=key:value\|key:value, …` with keys `currency`, `dateFormat`, `decimalPlaces`, `trueLabel`, `falseLabel` | sample value | `Amount=currency:EUR, Flag=trueLabel:Yes\|falseLabel:No` |
+| `DateFormat` | Enum (36 options) | `default`, `dd_MM_yyyy`, `yyyy-MM-dd`, `dd_MM_yyyy_HH_mm`, `HH_mm`, … | `default` | `dd_MM_yyyy_HH_mm` |
+| `InitialColumns` | Text area | comma separated names, aliases or display names | empty (all columns) | `name, Amount, Date` |
+| `ColumnLabels` | Text area | `column=Label, otherColumn=Other label` | empty (data set names) | `amount=Amount (€)` |
+| `Language` | Enum | `en` / `es` | `en` | `es` |
+| `RowColorRules` | Text area | `column=value:background[:text]\|value:background, …` (`~` contains, `*` any) | empty | `status=Active:#DFF6DD\|Pending:#FFF4CE` |
+
+> **Pagination vs virtual scrolling:** set `DisplayPagination = true` to page through the loaded rows (only the current page is rendered) or `false` to scroll the whole loaded list with virtual scrolling. Do not enable both at the same time: PrimeReact cannot combine them.
+
+## Performance and diagnostics
+
+Large datasets are handled with incremental row mapping (only new rows are formatted), per-row cached search text, stable render inputs for PrimeReact and a 200 ms search debounce (instant with `Enter` or when leaving the field).
+
+Optional diagnostics, disabled by default:
+
+```js
+window.__mdgPerf = true;    // logs the [ModernDataGrid][perf] counters
+window.__mdgPerfReport();   // console.table with the accumulated summary
+```
+
+Details, counters and reference measurements: [DOCUMENTATION.md §9.6](DOCUMENTATION.md).
+
+**Current version:** solution `1.0.0.33` · control `0.0.46`.

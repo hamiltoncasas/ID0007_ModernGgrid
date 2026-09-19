@@ -82,23 +82,24 @@ ModernDataGrid1.ColumnLabels = "nombre=Nombre completo, importe=Importe (€)"
 
 ## 5. Propiedades
 
-| Propiedad | Tipo | Default (manifest) | Si queda vacía | Descripción |
-|---|---|---|---|---|
-| `DisplayHeader` | TwoOptions | `true` | `false` | Muestra la barra superior con buscador, selector de columnas y botones. **Debe estar en `true` para ver esa barra** |
-| `HeaderText` | Texto | — | nombre de la entidad | Título de la grilla |
-| `DisplaySearch` | TwoOptions | — | `false` | Muestra el buscador global (palabra clave) |
-| `DisplayPagination` | TwoOptions | `false` | `true` | Muestra el paginador con selector de filas por página |
-| `EmptyMessage` | Texto | `No records found` | mensaje del idioma activo | Texto cuando no hay registros |
-| `SelectionMode` | Texto | `multiple` | `multiple` | `multiple` o `checkbox` |
-| `AllowSorting` | TwoOptions | — | `false` | Permite ordenar por columna |
-| `AllowFiltering` | TwoOptions | — | `false` | Muestra el icono de filtro (embudo) en cada columna |
-| `IsEnabled` | TwoOptions | `true` | `true` | Habilita la grilla (afecta a la selección) |
-| `FieldConfigurations` | TextArea | ejemplo de moneda/fecha/decimal/booleano | — | Formato de valores **por columna** (ver §5.1 y §8.2) |
-| `DateFormat` | Enum (36 opciones) | `default` | `default` | Formato **global** de fecha / fecha y hora / hora para las columnas de fecha (ver §5.1 y §8.3) |
-| `InitialColumns` | TextArea | vacío | todas | Columnas iniciales, separadas por comas: **nombre, alias o nombre para mostrar**. Vacío = todas |
-| `ColumnLabels` | TextArea | vacío | nombres del dataset | Nombres que verá el usuario final para cada columna: `columna=Nombre visible` (ver §5.1 y §8.5) |
-| `Language` | Enum (`en` \| `es`) | `en` | `en` | Idioma de todos los textos del control |
-| `RowColorRules` | TextArea | vacío | sin colores | Colorea el registro completo según el valor de una columna (ver §7.8) |
+| Propiedad | Tipo | Valores válidos | Default (manifest) | Si queda vacía | Ejemplo | Descripción |
+|---|---|---|---|---|---|---|
+| `DataSource` | **Data set** | cualquier tabla o colección de la app | — | — | `Items` | Origen de datos del que salen las columnas y las filas. Es un *data set*, no una propiedad de texto |
+| `DisplayHeader` | TwoOptions | `true`, `false` | `true` | `false` | `true` | Muestra la barra superior con buscador, selector de columnas y botones. **Debe estar en `true` para ver esa barra** |
+| `HeaderText` | Texto | texto libre | — | nombre de la entidad | `Cuentas por cobrar 2026` | Título de la grilla (y nombre base del archivo Excel exportado) |
+| `DisplaySearch` | TwoOptions | `true`, `false` | — | `false` | `true` | Muestra el buscador global (palabra clave) |
+| `DisplayPagination` | TwoOptions | `true`, `false` | `false` | `true` | `true` | Muestra el paginador con selector de filas por página. Con `true` se pinta solo la página activa; con `false`, el listado completo con scroll virtual (§9.6) |
+| `EmptyMessage` | Texto | texto libre | `No records found` | mensaje del idioma activo | `No hay cuentas para mostrar` | Texto cuando no hay registros |
+| `SelectionMode` | Texto | `multiple`, `checkbox` | `multiple` | `multiple` | `checkbox` | Cómo se seleccionan las filas |
+| `AllowSorting` | TwoOptions | `true`, `false` | — | `false` | `true` | Permite ordenar por columna |
+| `AllowFiltering` | TwoOptions | `true`, `false` | — | `false` | `true` | Muestra el icono de filtro (embudo) en cada columna |
+| `IsEnabled` | TwoOptions | `true`, `false` | `true` | `true` | `true` | Habilita la grilla (afecta a la selección) |
+| `FieldConfigurations` | TextArea | `columna=clave:valor\|clave:valor, …` con claves `currency`, `dateFormat`, `decimalPlaces`, `trueLabel`, `falseLabel` | ejemplo de moneda/fecha/decimal/booleano | — | `Importe=currency:EUR, Cantidad=decimalPlaces:3, Activo=trueLabel:Sí\|falseLabel:No` | Formato de valores **por columna** (ver §5.1 y §8.2) |
+| `DateFormat` | Enum (36 opciones) | `default`, `dd_MM_yyyy`, `yyyy-MM-dd`, `dd_MM_yyyy_HH_mm`, `HH_mm`, … (lista en §8.3) | `default` | `default` | `dd_MM_yyyy_HH_mm` | Formato **global** de fecha / fecha y hora / hora para las columnas de fecha (ver §5.1 y §8.3) |
+| `InitialColumns` | TextArea | nombres, alias o nombres para mostrar separados por comas | vacío | todas | `nombre, Importe, Fecha` | Columnas iniciales. Vacío = todas |
+| `ColumnLabels` | TextArea | `columna=Etiqueta visible, otraColumna=Otra etiqueta` | vacío | nombres del dataset | `nombre=Nombre completo, importe=Importe (€)` | Nombres que verá el usuario final para cada columna (ver §5.1 y §8.5) |
+| `Language` | Enum | `en`, `es` | `en` | `en` | `es` | Idioma de todos los textos del control |
+| `RowColorRules` | TextArea | `columna=valor:colorFondo[:colorTexto]\|…, otraColumna=…` (`~` = contiene, `*` = cualquiera) | vacío | sin colores | `estado=Activo:#DFF6DD\|Pendiente:#FFF4CE, prioridad=~alta:#FDE7E9` | Colorea el registro completo según el valor de una columna (ver §7.8) |
 
 > En Canvas, el valor que pongas en la app siempre manda; el *default* del manifest se usa al insertar el control y en escenarios model-driven.
 
@@ -262,6 +263,8 @@ estado=Activo:#DFF6DD|Pendiente:#FFF4CE, prioridad=~alta:#FDE7E9
 ### 7.1 Buscador global
 Se muestra si `DisplaySearch = true` (dentro de la barra, que requiere `DisplayHeader = true`). Filtra en vivo, ignorando mayúsculas y **acentos**, sobre el valor ya formateado de **todas** las columnas de los registros cargados. Se combina (AND) con los filtros por columna.
 
+El texto se escribe de forma inmediata, pero el filtrado se aplica con un **retardo de 200 ms** (así escribir una palabra no recorre todo el dataset en cada pulsación) y **de forma instantánea** al pulsar `Enter` o al salir del campo. El botón *Limpiar filtros* (§7.12) vacía el buscador de golpe, incluso si el término todavía no se había aplicado.
+
 ### 7.2 Filtros por columna (Contiene)
 Con `AllowFiltering = true` cada columna muestra el **icono de embudo**; al pulsarlo se despliega un panel con:
 - selector de coincidencia (**Contenga** por defecto, más *Comience con*, *Termine con*, *Igual a*, etc.),
@@ -296,6 +299,7 @@ Consecuencia práctica: **sin filtros aplicados**, la cantidad que muestra el pi
 - El botón de **refrescar** (icono circular) vuelve a la primera página, **limpia la selección** (local y en el dataset), **vuelve a pedir los datos a `Items`** (`refresh()`) y **recarga todos los registros**; la grilla se repinta con los datos nuevos (antes podía quedarse mostrando las filas anteriores).
 - **Limpiar filtros** (§7.12) quita el buscador y **todos** los filtros de columna, vuelve a la página 1 y **deja el control como recién cargado** (vuelve a pedir la fuente completa).
 - **Diagnóstico**: en la consola del navegador aparece `[ModernDataGrid] paginación { filasCargadas, filasFiltradas, filasPorPagina, paginas, totalResultCount, hasNextPage, paginaFuente }` cada vez que cambian las filas cargadas.
+- **Qué se pinta en cada modo**: con `DisplayPagination = true` la grilla dibuja **solo las filas de la página activa** (`Default Rows`); con `DisplayPagination = false` dibuja el listado completo con **scroll virtual** (en el DOM solo están las filas visibles). Es la combinación correcta en PrimeReact: **paginador y scroll virtual no se usan a la vez** (explicación en §9.4 y medición en §9.6).
 
 El texto del paginador muestra el rango visible y la **cantidad filtrada** (registros que cumplen el buscador global y los filtros de columna):
 
@@ -577,6 +581,16 @@ npm run build
 Select-String -Path ModernDataGrid\ControlManifest.Input.xml -Pattern "=\"[^""]*\x27"
 ```
 
+- **Rendimiento (desde `1.0.0.32`)**: las notas de mantenimiento del mapeo incremental, la identidad estable de props, el buscador con retardo y la regla de paginador/scroll virtual están en §9.4 y la medición y el diagnóstico en §9.6.
+
+- **Mapeo incremental (desde `1.0.0.32`)**: cada fila formateada se guarda en `mappedRowCache` por `recordId` junto a la **referencia** del record del dataset. Si el record es el mismo objeto y la estructura (columnas + `FieldConfigurations` + `DateFormat` + `Language`) no cambió, la fila se **reutiliza** sin volver a formatear (`reusedRows`). Se reformatea **todo** cuando cambia la estructura, cuando la app pide recargar (`invalidateMappedRows`, al pulsar *Actualizar*) o cuando el host revalida con `force` y la firma de filas no cambió. **No se usa `lodash.isEqual`**: la detección de cambios es por firma de filas (`loading`, cantidad, primer y último id) y por comparación de referencias.
+- **Texto buscable por fila (desde `1.0.0.32`)**: se calcula una sola vez por fila (minúsculas, todas las columnas, separadas por un salto de línea) en un `WeakMap` ligado a la propia fila; el buscador pasa de O(filas × columnas) a O(filas). El separador no puede escribirse en un buscador de una línea, así que el resultado es equivalente al filtro columna a columna.
+- **Identidad estable de props (desde `1.0.0.32`)**: `rowClassName`, `body` y `style` de cada columna, `virtualScrollerOptions`, `rowsPerPageOptions`, `globalFilterFields`, las props del pie, la plantilla del reporte y la selección se calculan una vez y se reutilizan; así vuelve a funcionar el `React.memo` interno de PrimeReact (`TableBody`/`BodyRow`/`BodyCell`) y no se repinta de más.
+- **Buscador aislado (`SearchBox`, desde `1.0.0.32`)**: el texto vive dentro del propio buscador, de modo que escribir **no** vuelve a pintar la cuadrícula; el control lo aplica con `searchDebounceMs` (200 ms) o al instante con `Enter`/salida del campo. `clearFilters()` fuerza la sincronización con `searchResetToken`.
+- **Paginador y scroll virtual son alternativas (desde `1.0.0.33`)**: `virtualScrollerOptions` se pasa **solo** cuando `DisplayPagination = false`. Con paginador, PrimeReact calcula el cuerpo como `dataToRender(rows)`, donde `rows` ya es el trozo del `VirtualScroller` (`items.slice(firstState, lastState)`), y lo vuelve a recortar con el `first` de la página: toda página posterior al viewport (~40 filas) quedaba vacía y parpadeaba. Nunca actives ambos a la vez.
+- **`shouldComponentUpdate` sin efectos secundarios (desde `1.0.0.32`)**: la revalidación del dataset (`needsRefresh`) se consume **una sola vez** en `componentDidUpdate`; antes podía llamar a `DataSource.refresh()` en cada intento de render (y dejar la bandera activa indefinidamente).
+- **Sin virtualización no se pierde el layout**: la clase `p-datatable-flex-scrollable` depende de `scrollable && scrollHeight === 'flex'`, no del `VirtualScroller`, así que el alto flexible, el encabezado fijo y el scroll horizontal funcionan igual con paginador.
+
 ### 9.5 Checklist de verificación tras importar
 
 1. Power Apps Maker muestra la versión esperada de la solución.
@@ -591,6 +605,47 @@ Select-String -Path ModernDataGrid\ControlManifest.Input.xml -Pattern "=\"[^""]*
 10. Al cambiar `Language` todos los textos (incluido el panel de filtro) cambian de idioma.
 11. Con `DisplayPagination = true` el pie navega entre páginas (y "anterior" siempre responde).
 12. El botón **Limpiar filtros** quita de golpe el buscador y los filtros de columna, y está deshabilitado cuando no hay ninguno.
+
+### 9.6 Diagnóstico de rendimiento (`window.__mdgPerf`)
+
+El control incluye un diagnóstico **opcional**: no se activa por sí solo y no cambia nada para el usuario final. Se enciende desde la consola del navegador y escribe contadores con el trabajo real del control.
+
+```js
+window.__mdgPerf = true;    // activa los mensajes [ModernDataGrid][perf]
+// …usa la grilla: carga, escribe en el buscador, filtra, ordena, cambia de página, pulsa Actualizar…
+window.__mdgPerfReport();   // resumen acumulado (console.table). También se emite al desmontar el control
+```
+
+| Contador | Qué mide | Qué esperar |
+|---|---|---|
+| `updateViews` | Veces que el host pide pintar el control | Crece con cambios del dataset o de las propiedades, **no** con cada tecla |
+| `renders`, `renderMedioMs` | Renders de React y su tiempo medio | No debe crecer al escribir en el buscador (solo al aplicar el término) |
+| `maps`, `mapMs`, `filasPorMapa` | Pasadas de mapeo de filas y su coste | `maps` ≈ número de páginas cargadas (no el doble) y `mapMs` acotado |
+| `mappedRows`, `reusedRows` | Filas formateadas y filas **reutilizadas** del caché incremental | `reusedRows` debe ser casi todo el volumen a partir de la primera página |
+| `filterPasses`, `filterMs` | Pasadas del buscador global y su coste | Una por término aplicado |
+| `rowsPainted` | Filas que PrimeReact pintó en total | Acotado al viewport (scroll virtual) o al tamaño de página (paginador) |
+| `filasCargadas` | Filas que hay en la grilla en ese momento | Debe coincidir con lo que informa `[ModernDataGrid] paginación` |
+
+**Cómo comparar antes/después**
+
+1. Activa `window.__mdgPerf = true` **antes** de tocar la cuadrícula.
+2. Carga la grilla y mira `[ModernDataGrid][perf] render`: `filasCargadas` frente a `filasPintadasRenderAnterior`.
+3. Escribe una palabra en el buscador: no debería aparecer un `render` por pulsación (el filtrado entra al aplicar el término).
+4. Pulsa **Actualizar**: `maps` sube en uno y `reusedRows` se reinicia (reformateo completo, es el comportamiento buscado).
+5. Para el “antes”, el paquete anterior no tiene `__mdgPerfReport`; compara con cronómetro o con la sensación de fluidez.
+
+**Medición de referencia** (10.000 filas × 25 columnas, mismo algoritmo del control, un hilo de CPU, sin DOM):
+
+| Escenario | Antes | Después |
+|---|---|---|
+| Carga completa con páginas de 2.000 filas | 3.735 ms | 671 ms |
+| Carga completa con páginas de 500 filas | 12.716 ms | 616 ms |
+| Carga completa con páginas de 25 filas (extrapolado a 10.000) | ≈ 4 min | ≈ 0,6 s |
+| Buscador, coste por pasada | 140 ms | 14 ms (tras la primera) |
+| Selección de 1.000 filas por render | 33 ms | 1,5 ms |
+| Renders por interacción | 2 | 1 |
+
+Son cifras de referencia del trabajo de CPU (no incluyen el DOM). En la app, la mejora depende del tamaño de página que entregue el host: revisa `[ModernDataGrid] pidiendo toda la fuente` para ver si honra la página de 10000 filas o si va página a página.
 
 ## 10. Limitaciones conocidas
 
@@ -617,6 +672,8 @@ En `FieldConfigurations` y `RowColorRules` los caracteres `:`, `|` y `,` son sep
 
 ### 10.5 Filtros, orden y paginación sobre lo cargado
 Los filtros, el orden y el paginado actúan sobre las filas **cargadas** en la grilla (el filtrado no viaja al origen). El control carga automáticamente las páginas que falten hasta un tope de **2000 filas**; si tu tabla tiene más, amplía `Default Rows` en la app para traer más filas en cada carga.
+
+Con `DisplayPagination = true` se pinta **solo la página activa**; con `DisplayPagination = false` se pinta el listado completo con **scroll virtual**. El orden y los filtros siempre actúan sobre las filas cargadas, estén visibles o no.
 
 ### 10.6 La barra requiere cabecera
 El buscador, el selector de columnas, el refresco y la exportación viven en la barra superior: si `DisplayHeader = false`, no se muestran.
@@ -650,6 +707,11 @@ El buscador, el selector de columnas, el refresco y la exportación viven en la 
 | El botón de actualizar no trae datos nuevos | Llama a `refresh()` sobre el dataset; si tu origen no lo soporta (por ejemplo una colección local), vuelve a construirla antes de refrescar |
 | Tras pulsar Actualizar el pie se queda con las filas anteriores | Corregido en `1.0.0.29`: el control detecta que `Items` se recargó (firma de filas) y repinta, además de volver a traer todas las páginas. Si lo ves en otra versión, cierra y reabre la app para descargar el paquete nuevo |
 | El pie muestra menos páginas que registros hay en `Items` | El control solo puede paginar lo que la fuente le entregue con `loadNextPage()`. Comprueba la línea `[ModernDataGrid] paginación`: si `filasCargadas` se queda en el tamaño de `Default Rows` y `hasNextPage` es `false`, el origen no permite paginar; sube `Default Rows` en la app |
+| La página 3 (y siguientes) se veía **en blanco** o parpadeando | Corregido en `1.0.0.33`: PrimeReact no combina paginador con scroll virtual (el `DataTable` volvía a recortar el trozo que ya había recortado el `VirtualScroller`, así que toda página posterior al viewport (~40 filas) quedaba vacía). Ahora el scroll virtual se usa **solo** con `DisplayPagination = false`. Si lo ves en otra versión, importa `1.0.0.33` o superior y cierra/reabre la app |
+| Tras *Limpiar filtros* quedaba texto escrito en el buscador | Corregido en `1.0.0.33`: el buscador se vacía aunque el término aún no se hubiera aplicado (carrera del retardo de 200 ms) |
+| Con muchas filas sigue notándose lento | Activa el diagnóstico (`window.__mdgPerf = true`, §9.6) y revisa `maps`, `reusedRows` y `filterPasses`. Mira también `[ModernDataGrid] pidiendo toda la fuente`: si `paginaActual` es pequeña, el host no honró la página grande, y conviene subir `Default Rows` y el **límite de filas de datos** de Power Apps |
+| Quiero el listado completo con scroll (sin páginas) | Pon `DisplayPagination = false`: se virtualiza todo el listado cargado y el scroll es continuo (es la combinación óptima en PrimeReact) |
+| El buscador filtra “un poco después” de escribir | Es el comportamiento previsto desde `1.0.0.32` (200 ms); con `Enter` o al salir del campo se aplica al instante. Para más detalle, ver §7.1 |
 
 ### 11.1 Preguntas frecuentes
 
