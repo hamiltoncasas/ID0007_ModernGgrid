@@ -497,10 +497,11 @@ Formato general:
 Columna=clave:valor|clave:valor, OtraColumna=clave:valor
 ```
 
-- La **columna** se identifica por nombre lógico, alias o nombre para mostrar (sin distinguir mayúsculas, acentos ni espacios extremos).
+- La **columna** se identifica por nombre lógico, alias, nombre para mostrar o la etiqueta de `ColumnLabels` (sin distinguir mayúsculas, acentos ni espacios extremos).
 - `,` separa columnas y `|` separa pares `clave:valor` dentro de la misma columna.
 - Si una columna no aparece en la lista, se aplican los valores por defecto.
 - El `dateFormat` de una columna **tiene prioridad** sobre la propiedad global `DateFormat`.
+- Las propiedades dedicadas (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) **tienen prioridad** sobre esta: si una columna está en ambas, gana la dedicada. Esta propiedad es útil cuando quieres configurar varias columnas del mismo tipo en una sola línea.
 
 | Tipo de dato | Clave | Ejemplo | Resultado |
 |---|---|---|---|
@@ -794,6 +795,7 @@ Vistas que el usuario final elige en el **combo de la barra**, junto al selector
 
 ## 9. Detalles técnicos
 
+### 9.1 Estructura del proyecto
 
 | Archivo | Contenido |
 |---|---|
