@@ -1,7 +1,12 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # msbuild output directories
-/bin
+# Los paquetes de la solución (.zip) SÍ se versionan: se publican desde el repositorio.
+# Se ignora todo lo demás que MSBuild deje en bin y el directorio de intermedios obj.
+/bin/*
+!/bin/Release/
+/bin/Release/*
+!/bin/Release/*.zip
 /obj
 
 # MSBuild Binary and Structured Log
