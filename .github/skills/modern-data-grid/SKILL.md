@@ -21,7 +21,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - `ModernDataGrid/helpers/Localization.ts`: `en`/`es` strings and the Spanish PrimeReact locale.
 - `ModernDataGrid/helpers/DateFormat.ts`: catalog of the date patterns (`DateFormats`/`DateTimeFormats`/`TimeFormats`) plus `resolveDatePattern()` (token or literal pattern).
 - `ModernDataGrid/helpers/FieldFormats.ts`: per-column formats (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`) with strict matching by column data type.
-- `ModernDataGrid/helpers/Views.ts`: `Views` property (views/reports): tolerant JSON parsing, filter grammar (`=`, `!=`, `%…%`, `>`, `>=`, `<`, `<=`), column/title resolution and the exported file name/sheet.
+- `ModernDataGrid/helpers/Views.ts`: `Views` property (views/reports): tolerant JSON parsing, filter grammar (`=`, `!=`, `%…%`, `in (a,b)`, `>`, `>=`, `<`, `<=`), column/title resolution and the exported file name/sheet.
 - `ModernDataGrid/helpers/ColumnTypes.ts`: translated name of each column data type (shown in the column selector).
 - `ModernDataGrid/helpers/ColumnLabels.ts`: display-name overrides for column headers (`ColumnLabels`).
 - `ModernDataGrid/helpers/ColumnFilters.ts`: compiles the PrimeReact filter model once per change (record field, `and`/`or` operator and `FilterService` predicate) so the Excel export never rebuilds it per row.
@@ -38,7 +38,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.38`
+- Solution version: `1.0.0.39`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -225,7 +225,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.38`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.39`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -238,7 +238,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.51`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.52`, is separate from the four-part Dataverse solution version.
 
 Date formats are configured in exactly three properties (`DateFormats`, `DateTimeFormats`, `TimeFormats`) and each one applies **only** to columns whose data type matches it: `buildColumnFormat()` resolves the pattern with `findDateAssignment()` and ignores (with a one-off console warning) a column listed in a property of another type, so a mistake never changes another column's format. There is no global date-format property (the `DateFormat` enum was removed in `0.0.50`).
 
@@ -246,7 +246,7 @@ Keep the column selector (`Mostrar u ocultar columnas`) listing **every** data s
 
 Keep the date range filter working the way PrimeReact expects it: the row value used by the filter is the **filter model key**, so date columns must use the hidden milliseconds field (`column + '__mdgdatevalue'`) as both the `filterField` and the key of the entry in the `filters` state, with `filterMatchMode = between` and the inline range calendar as `filterElement`. The same value must be resolved by the Excel export (`resolveFilterRecordField`) so the file matches the grid. Never key a date filter by the display field: the filter menu writes into `filters[filterField]`.
 
-Views (`Views` property) must stay additive: applying one sets the visible columns, the view titles, the view filters, the sorting and the page, and clears the manual filters; manual search/column filters applied afterwards are combined with the view filters. Keep the view parsing tolerant (strict JSON or JavaScript-object style with `;` and unquoted keys) and never include real customer data in the documentation examples.
+Views (`Views` property) must stay additive: applying one sets the visible columns, the view titles, the view filters, the sorting and the page, and clears the manual filters; manual search/column filters applied afterwards are combined with the view filters. Keep the view parsing tolerant (strict JSON or JavaScript-object style with `;` and unquoted keys): inside `filtros`, `col in (a,b)` (added in `0.0.52`) is the only **OR** — its comma-separated values are compared like `=` and there is no `not in` — while every rule separated by `;` stays **AND** (so two `=` rules on the same column yield zero rows). The `in` comparison is text-based, so on date columns it matches the visible text, not the real date. Never include real customer data in the documentation examples.
 
 Performance work (incremental row mapping, memoized render inputs, compiled column filters, the column header/label memos, search debounce and the optional `window.__mdgPerf` diagnostics) must never change manifest properties or user-visible behavior: keep the dataset property, the export, the pagination and the filters as they are, and keep `shouldComponentUpdate` free of side effects (the dataset `refresh()` is consumed in `componentDidUpdate`). Reuse `helpers/ColumnFilters.ts` (`compileColumnFilters()` + `matchesCompiledFilters()` + `hasActiveColumnFilters()`) whenever the filter model is evaluated over rows: never rebuild the model inside the row loop and never use `JSON.stringify(filters)` as a cache key (use the memoized `filtersSignature()`). Keep the column header/label memos identity-based (columns array reference + the raw property text). Keep `package.json` free of dependencies that are no longer imported (`lodash.isequal` and `flatted` were dropped in `0.0.51`); `obj/` and `out/` stay git-ignored.
 

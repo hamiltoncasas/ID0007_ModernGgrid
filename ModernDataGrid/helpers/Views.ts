@@ -23,7 +23,7 @@
  *
  * Operadores de `filtros` (varias reglas separadas por `;` o salto de línea):
  * `=`, `!=`, `%valor%` (contiene), `valor%` (empieza por), `%valor` (termina con),
- * `>`, `>=`, `<`, `<=`. Las reglas se combinan con **Y**.
+ * `>`, `>=`, `<`, `<=` e `in (A,B)` (cualquiera de los valores). Las reglas se combinan con **Y**.
  */
 import { normalizeText } from './Utils';
 
@@ -41,7 +41,8 @@ export type ViewFilterOperator =
     | 'gt'
     | 'gte'
     | 'lt'
-    | 'lte';
+    | 'lte'
+    | 'in';
 
 /** Regla de filtro escrita en `filtros`. */
 export interface ViewFilter {
@@ -394,6 +395,21 @@ export function parseViewFilter(token: string): ViewFilter | null {
         }
     }
 
+    // `Columna in (valor, valor)`: se cumple con cualquiera de los valores.
+    const inMatch = /^([^%]+?)\s+in\s*\(?\s*([^%()]+?)\s*\)?$/i.exec(text);
+
+    if (inMatch) {
+        const column = inMatch[1].trim();
+        const values = inMatch[2]
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean);
+
+        if (column && values.length) {
+            return { token, column, operator: 'in', value: values.join(',') };
+        }
+    }
+
     // Sin operador explícito: `Columna %valor%` (contiene), `valor%` (empieza por)…
     const match = /^(.*?)\s+(\S*%\S*)$/.exec(text);
 
@@ -411,7 +427,7 @@ export function parseViewFilter(token: string): ViewFilter | null {
         }
     }
 
-    console.warn(`Views: regla sin operador válido "${token}" (usa =, !=, %, >, >=, <, <=).`);
+    console.warn(`Views: regla sin operador válido "${token}" (usa =, !=, in (a,b), %, >, >=, <, <=).`);
 
     return null;
 }
@@ -641,6 +657,12 @@ export function matchesViewFilter(
             return compareOrdered(display, filterValue, (left, right) => left < right);
         case 'lte':
             return compareOrdered(display, filterValue, (left, right) => left <= right);
+        case 'in':
+            return filterValue
+                .split(',')
+                .map((value) => value.trim())
+                .filter(Boolean)
+                .some((value) => valuesAreEqual(display, value));
         default:
             return true;
     }

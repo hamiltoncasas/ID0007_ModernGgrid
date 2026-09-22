@@ -8,7 +8,7 @@
 - **Includes Built-In Filtering, Sorting, and Keyword Search**
 - **Supports Pagination** (Ensure "Default Rows" is set above 0 for it to display)
 - **Date range filter** on date and date-and-time columns (both endpoints included)
-- **Views / reports combo** next to the column selector: columns, titles, filters, sorting and the exported file/sheet defined per view
+- **Views / reports combo** next to the column selector: columns, titles, filters (including `in (a,b)` when a column must match any of several values), sorting and the exported file/sheet defined per view
 - **Per-column formats split by concern**: currency, date, date and time, time, numbers, decimals and Yes/No labels
 
 For any issues or feedback, please use the "Issues" tab at the top of the page.
@@ -72,7 +72,7 @@ This is a **dataset** control: its data comes from the `DataSource` data set pro
 | `NumberFormats` | Text area | `column=[decimals][\|grouping:true\|false][\|locale:xx-XX], …` | empty (2 decimals) | `Quantity=3\|grouping:false` |
 | `DecimalFormats` | Text area | `column=decimals, …` | empty (2 decimals) | `Quantity=3` |
 | `BooleanLabels` | Text area | `column=True\|False, …` | empty (`Yes`/`No`) | `Active=Yes\|No` |
-| `Views` | Text area (JSON) | object (or array) of views | empty (no combo) | `{"active":{"nombre":"Active","columnas":"name;status","filtros":"status = Active"}}` |
+| `Views` | Text area (JSON) | object (or array) of views | empty (no combo) | `{"active":{"nombre":"Active","columnas":"name;status","filtros":"status in (Active,Pending)"}}` |
 | `ColumnLabels` | Text area | `column=Label, otherColumn=Other label` | empty (data set names) | `amount=Amount (€)` |
 | `Language` | Enum | `en` / `es` | `en` | `es` |
 | `RowColorRules` | Text area | `column=value:background[:text]\|value:background, …` (`~` contains, `*` any) | empty | `status=Active:#DFF6DD\|Pending:#FFF4CE` |
@@ -94,4 +94,4 @@ window.__mdgPerfReport();   // console.table with the accumulated summary
 
 Details, counters and reference measurements: [DOCUMENTATION.md §9.6](DOCUMENTATION.md).
 
-**Current version:** solution `1.0.0.38` · control `0.0.51`.
+**Current version:** solution `1.0.0.39` · control `0.0.52`.

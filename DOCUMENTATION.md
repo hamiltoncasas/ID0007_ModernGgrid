@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.38` |
+| Versión de la solución | `1.0.0.39` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.51` |
+| Versión del control (manifest) | `0.0.52` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.51`) y la versión de la solución (`1.0.0.38`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.52`) y la versión de la solución (`1.0.0.39`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 
 ## 2. Requisitos
 
@@ -339,7 +339,7 @@ Acepta JSON estricto y también el formato de objeto de JavaScript (nombres de p
 | Propiedad | Valor |
 |---|---|
 | `Language` | `es` |
-| `Views` | `{"activos":{"nombre":"Activos","descripcion":"Solo lo vigente","columnas":"cliente;estado;fecha;importe","titulos":{"fecha":"Fecha de alta"},"filtros":"estado = Activo","ordenarPor":"fecha","ordenDescendente":true,"archivo":"activos_{fecha}.xlsx","hoja":"Activos"}}` |
+| `Views` | `{"activos":{"nombre":"Activos","descripcion":"Solo lo vigente","columnas":"cliente;estado;fecha;importe","titulos":{"fecha":"Fecha de alta"},"filtros":"estado in (Activo,Pendiente)","ordenarPor":"fecha","ordenDescendente":true,"archivo":"activos_{fecha}.xlsx","hoja":"Activos"}}` |
 | `DisplayHeader` | `true` (el combo vive en la barra) |
 | `AllowFiltering` | `true` (los filtros manuales se suman a los de la vista) |
 
@@ -756,7 +756,7 @@ Vistas que el usuario final elige en el **combo de la barra**, junto al selector
     "descripcion": "Texto de apoyo que aparece en la lista",
     "columnas": "columna1;columna2;columna3",
     "titulos": { "columna1": "Título visible", "columna2": "Otro título" },
-    "filtros": "columna1 = Valor; columna2 %texto%",
+    "filtros": "columna1 = Valor; columna2 %texto%; columna3 in (A,B)",
     "ordenarPor": "columna1",
     "ordenDescendente": true,
     "archivo": "informe_{fecha}.xlsx",
@@ -801,7 +801,7 @@ Vistas que el usuario final elige en el **combo de la barra**, junto al selector
 | `descripcion` | texto | no | Línea de apoyo bajo el nombre, dentro de la lista | `"Solo lo que está vigente"` |
 | `columnas` | texto o arreglo | no | Columnas que se ven al elegir la vista, **en ese orden** (oculta las demás) | `"cliente;estado;fecha"` |
 | `titulos` | objeto | no | Renombra columnas **solo en esa vista** (encabezado, filtro y Excel) | `{ "fecha": "Fecha de alta" }` |
-| `filtros` | texto o arreglo | no | Reglas que se aplican al elegir la vista (se combinan con **Y**) | `"estado = Activo; cliente %ACME%"` |
+| `filtros` | texto o arreglo | no | Reglas que se aplican al elegir la vista (las reglas se combinan con **Y**; dentro de un `in`, sus valores se combinan con **O**) | `"estado in (Activo,Pendiente)"` |
 | `ordenarPor` | texto | no | Columna por la que se ordena (en las columnas de fecha el orden es cronológico) | `"fecha"` |
 | `ordenDescendente` | booleano | no (`false`) | `true` = de mayor a menor | `true` |
 | `archivo` | texto | no | Nombre base del Excel exportado con esa vista; admite `{fecha}`, `{hora}` y `{fechaHora}` | `"activos_{fecha}.xlsx"` |
@@ -817,7 +817,8 @@ Vistas que el usuario final elige en el **combo de la barra**, junto al selector
 |---|---|---|---|
 | `col = valor` | Igual | `estado = Activo` | El valor visible es igual (sin distinguir mayúsculas ni acentos; numérico si es número) |
 | `col != valor` / `col <> valor` | Diferente | `estado != Cerrado` | No es igual |
-| `col %valor%` / `col ~valor` | Contiene | `cliente %ACME%` | El texto contiene el valor |
+| `col in (v1,v2)` | En la lista | `estado in (Programada,Despachada)` | El valor visible es igual a **cualquiera** de los valores: el «o» de una misma columna |
+| `col %valor%` | Contiene | `cliente %ACME%` | El texto contiene el valor |
 | `col valor%` | Empieza por | `codigo ZH%` | El texto empieza por el valor |
 | `col %valor` | Termina con | `correo %@acme.com` | El texto termina con el valor |
 | `col > valor` | Mayor que | `importe > 1000` | Numérico, de fecha o de texto |
@@ -826,7 +827,11 @@ Vistas que el usuario final elige en el **combo de la barra**, junto al selector
 | `col <= valor` | Menor o igual | `fecha <= 2026-12-31` | Incluye el valor |
 
 - Varias reglas se escriben **separadas por `;`** (o por un salto de línea) y se combinan con **Y**.
-- En las **columnas de fecha** las reglas `=`, `!=`, `>`, `>=`, `<` y `<=` se evalúan contra la fecha real del registro, no contra el texto que se ve, así que funcionan con cualquier formato visible. La fecha se escribe en `AAAA-MM-DD` (también se aceptan `dd/MM/aaaa` y `MM/dd/aaaa`).
+- `in` es **una sola regla** con varios valores **separados por coma**, y esos valores se combinan con **O**: `estado in (Programada,Despachada)` trae las programadas *y* las despachadas. Es lo que necesitas cuando dos reglas no pueden cumplirse a la vez: `estado = Programada; estado = Despachada` daría **cero** filas, porque el `;` es **Y**.
+- Cada valor de la lista se compara igual que con `=`: sin distinguir mayúsculas ni acentos, y de forma numérica si es un número. Los espacios alrededor de cada valor se recortan, así que los valores con espacios internos funcionan: `cliente in (ACME S.A.S, Otra Empresa Ltda)`.
+- Formas aceptadas de `in`: `col in (A,B)`, `col in ( A , B )`, `col in A,B` y `col IN (A,B)`.
+- Un valor de una lista `in` no puede contener `%` ni paréntesis (`in` no se combina con comodines); si la lista queda vacía, la regla se ignora y la consola lo indica. Tampoco existe `not in`: para excluir varios valores pon una regla `!=` por cada uno (las reglas se combinan con **Y**).
+- En las **columnas de fecha** las reglas `=`, `!=`, `>`, `>=`, `<` y `<=` se evalúan contra la fecha real del registro, no contra el texto que se ve, así que funcionan con cualquier formato visible. La fecha se escribe en `AAAA-MM-DD` (también se aceptan `dd/MM/aaaa` y `MM/dd/aaaa`). El `in` es la excepción: en una columna de fecha compara contra el **texto visible**, así que para abarcar varias fechas usa una regla por fecha (`=`, `>=`, `<=`…).
 - `= 2026-09-16` significa "todo ese día"; `>= 2026-09-16` desde el inicio de ese día; `> 2026-09-16` desde el día siguiente.
 - Si escribes una fecha con hora (`2026-09-16 18:30`), se compara el instante exacto.
 - Las reglas que citan columnas que no existen, o sin operador reconocible, se ignoran y la consola lo indica.
@@ -1134,6 +1139,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.39` / `0.0.52` | **Operador `in` en los filtros de las vistas.** La clave `filtros` de `Views` acepta ahora `col in (v1,v2)` (también sin paréntesis y con el `in` en cualquier combinación de mayúsculas/minúsculas): es **una sola regla** cuyos valores, separados por **coma**, se combinan con **O**, así que ya se puede pedir `estado in (Programada,Despachada)` (antes había que hacerlo por exclusión con dos reglas `!=`, porque las reglas separadas por `;` se combinan con **Y**). Cada valor se compara igual que con `=` (sin distinguir mayúsculas ni acentos, y de forma numérica si es un número), los espacios alrededor se recortan y los valores pueden llevar espacios internos; una lista vacía (`in ()`) o un valor con `%` o paréntesis se ignora con el aviso de consola. No se añadió `not in`, y en las columnas de fecha el `in` compara contra el texto visible. Sin ningún otro cambio: las propiedades del manifest, los formatos, los filtros de columna, el rango de fechas, las vistas, los colores, la paginación, la selección, el dataset y la exportación quedan igual |
 | `1.0.0.38` / `0.0.51` | **Limpieza y velocidad, sin cambios de propiedades ni de comportamiento visible.** (1) La exportación a Excel recorre las filas con los filtros de columna **compilados** en un helper nuevo (`helpers/ColumnFilters.ts`): el campo del registro, el operador `and`/`or` y el predicado de `FilterService` se resuelven **una sola vez** por cambio del modelo (antes el modelo se reconstruía en cada fila y el modo de coincidencia se buscaba fila a fila). (2) El contador del pie ya no serializa el modelo de filtros con `JSON.stringify` en cada render: usa la firma memoizada por identidad (`filtersSignature()`). (3) Los **encabezados** y las **etiquetas de columna** se memoizan por identidad del arreglo de columnas en lugar de reconstruir una firma por columna y por render, y se evita el recorrido de columnas por cada encabezado. (4) Se elimina código muerto: `filterMap`, `getFieldValue()`, `getRecordsFromContext()`, `getExportFileStamp()`, `totalPages` del estado, `getAvailableDatePatterns()`, `getDateFormatTokens()`, el archivo vacío `helpers/Interfaces.ts`, el volcado redundante del contexto en `window` dentro de `checkAndStartInterval()` y el registro «Modern Data Grid 1.7» (ahora el log de arranque informa la versión real del control). (5) Se retiran las dependencias que ya no se usaban (`lodash.isequal`, `flatted` y su paquete de tipos) y `obj/`/`out/` quedan ignorados por git. Sin cambios en el dataset, las propiedades del manifest, los formatos, los filtros (rango de fechas incluido), las vistas, la paginación, la selección, los colores ni la exportación |
 | `1.0.0.37` / `0.0.50` | **Un formato por tipo de fecha y aplicación estricta por tipo de dato.** (1) Se **retira** el combo global `DateFormat` (36 opciones): los formatos de fecha quedan en **tres** propiedades, una por tipo de dato: `DateFormats` (columnas de solo fecha), `DateTimeFormats` (columnas de fecha y hora) y `TimeFormats` (columnas de solo hora). (2) Cada propiedad se aplica **automáticamente solo a las columnas de su tipo**: si la columna escrita no es de ese tipo (por ejemplo una columna de fecha y hora puesta en `DateFormats`, o una columna de texto), el formato **no se aplica** y la columna se queda con el valor por defecto de su tipo (`yyyy-MM-dd`, `yyyy-MM-dd HH:mm:ss` o `HH:mm:ss`); la consola lo avisa una vez por columna y propiedad. No hay cadenas de respaldo entre propiedades, así que un error de ubicación nunca cambia el formato de otra columna. (3) Las propiedades `DateFormats`, `DateTimeFormats` y `TimeFormats` aceptan el patrón escrito tal cual (el espacio entre fecha y hora es un carácter literal: `dd/MM/yyyy HH:mm`) o un token del catálogo de §8.3. (4) Se mantienen `CurrencyFormats`, `NumberFormats`, `DecimalFormats` y `BooleanLabels` (no son formatos de fecha). (5) En esta misma entrega se retira la propiedad heredada `FieldConfigurations`, la selección de columnas pasa a llamarse `CamposVisibles` (*Campos visibles*) y su selector lista todas las columnas del dataset con su tipo de dato. Sin cambios en dataset, buscador, filtros (rango de fechas incluido), vistas, paginación, selección, colores ni exportación |
 | `1.0.0.35` / `0.0.48` | **Barra en una sola fila, más compacta, y selector de columnas completo.** (1) La barra ya no se reparte en varias líneas: título + combo de vistas + selector de columnas + buscador + botones van en **una sola fila** (`flex-wrap: nowrap`), con controles de `2.25rem` de alto, iconos de `1rem`, menos separación y un título que se recorta con puntos suspensivos si falta espacio. (2) El **selector de columnas** (Mostrar u ocultar columnas) ahora lista **todas las columnas del dataset** (antes, si `InitialColumns` estaba definido, la lista se limitaba a esas columnas y podía parecer incompleto), muestra el **tipo de dato** de cada columna (Texto, Fecha y hora, Número, Moneda, Sí/No, Opción, Correo…, traducido al idioma del control) y añade al pie los botones **Todas** y **Quitar todas** (desmarca todo; con *Todas* se vuelve a marcar). El disparador es cuadrado, solo con su icono. (3) `InitialColumns` pasa a definir únicamente las columnas **visibles al abrir** y ya no limita lo que el usuario puede mostrar; si su texto no coincide con ninguna columna, la consola lo avisa y se muestran todas. (4) Nuevo helper `helpers/ColumnTypes.ts` con el nombre traducido del tipo de dato. Sin cambios en dataset, buscador, filtros (rango de fechas incluido), vistas, paginación, selección, colores ni exportación |
