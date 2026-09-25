@@ -122,6 +122,23 @@
     font-size: 0.875rem;
 }
 
+/* Ayuda del panel: recuerda que el rango se arma con los dos extremos. */
+.modern-data-grid-date-filter-hint {
+    color: #6c757d;
+    font-size: 0.75rem;
+    line-height: 1.3;
+    padding: 0 0 0.25rem;
+}
+
+/* Días elegidos en el panel, antes de aplicar el rango. */
+.modern-data-grid-date-filter-selected {
+    color: #2196f3;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.3;
+    padding: 0 0 0.25rem;
+}
+
 .modern-data-grid-date-filter .p-datepicker-calendar {
     width: 100%;
 }

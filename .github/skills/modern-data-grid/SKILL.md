@@ -38,7 +38,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.39`
+- Solution version: `1.0.0.41`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -56,7 +56,7 @@ The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `
 - Internal horizontal and vertical scrolling constrained to the PCF host dimensions.
 - Managed and unmanaged solution packaging.
 - Per-column formats split by concern (`CurrencyFormats`, `DateFormats`, `DateTimeFormats`, `TimeFormats`, `NumberFormats`, `DecimalFormats`, `BooleanLabels`). The three date properties apply **only** to columns whose data type matches them.
-- Date and date-and-time columns filter through an inline **range calendar** (`between`, both endpoints included) backed by the hidden milliseconds field.
+- Date and date-and-time columns filter through an inline **range calendar** (`between`, both endpoints included) backed by the hidden milliseconds field. The calendar only records the days (with the selected range printed in the panel) and the grid filters when the end user presses **Apply**; the panel of a date column has no match modes, no and/or operator and no extra rules.
 - `Views` property: a combo next to the column selector applies ready-made reports (columns, titles, filters, sorting, exported file and sheet).
 - Column selector for the end user: lists every data set column with its translated data type, plus **Select all** / **Clear all** buttons in the panel footer.
 - Toolbar on a single compact row (title truncates, the search box shrinks).
@@ -88,7 +88,7 @@ Keep the controlled filter state in the `menu` shape:
 
 With `filterDisplay="menu"` PrimeReact writes the typed value into `constraints[index].value` and reads `filterModel.operator`. The legacy row shape `{ value, matchMode }` silently stops filtering because the row input writes `filterModel.value` while the filter engine reads the constraints. `getFiltersForTable()` guarantees one model per dataset column before rendering so the panel always has a model to write into. Keep `filters` and `onFilter` wired together when editing the filter code.
 
-`showApplyButton` is set to `false` so typing filters immediately (PrimeReact debounces with `filterDelay`); the panel keeps its Clear button.
+`showApplyButton` is `false` for text columns so typing filters immediately (PrimeReact debounces with `filterDelay`); the panel keeps its Clear button. Date columns are the exception: they **need** `showApplyButton` (the range is applied with **Apply**), `showFilterOperator` and `showAddButton` are off for them, and the panel prints the chosen range above the calendar.
 
 ## Excel Export
 
@@ -161,7 +161,8 @@ getRowSignature(dataSet) // `${loading ? 1 : 0}|${ids.length}|${firstId}|${lastI
 
 - `shouldComponentUpdate` returns `true` as soon as `getRowSignature(nextProps…DataSource) !== this.processedRowSignature`; `componentDidUpdate` stores the signature and maps the records when it changed (`rowsChanged`).
 - `refreshData()` and `componentDidMount()` reset `processedRowSignature = ''` so a reload of the same page is still detected.
-- A pure row change only re-maps and repaints (`forceUpdate()`); structural changes (data source, filters, field configurations) still go through `forceRefreshDataset()` and `notifyOutputChanged()`.
+- A pure row change only re-maps and repaints (`forceUpdate()`); structural changes (data source, formats, columns) still go through `forceRefreshDataset()` and `notifyOutputChanged()`.
+- **Column filters are not structural (since `1.0.0.41`)**: keep `filtersChanged` out of that check. A filter applies **in client** over the rows already mapped, so re-mapping and notifying the host on every filter change is pure cost (it made the date calendar take seconds per click). The repaint comes from `shouldComponentUpdate`, which compares the filter signature; `onFilterChange()` ignores events whose model did not change (the deferred `onFilter` that arrives right after Apply) and resets `currentPage`/`pendingPage` when it did change, so the view never stays on a page that no longer exists.
 
 ## Pagination
 
@@ -225,7 +226,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.39`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.41`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -238,7 +239,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.52`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.54`, is separate from the four-part Dataverse solution version.
 
 Date formats are configured in exactly three properties (`DateFormats`, `DateTimeFormats`, `TimeFormats`) and each one applies **only** to columns whose data type matches it: `buildColumnFormat()` resolves the pattern with `findDateAssignment()` and ignores (with a one-off console warning) a column listed in a property of another type, so a mistake never changes another column's format. There is no global date-format property (the `DateFormat` enum was removed in `0.0.50`).
 
@@ -246,9 +247,11 @@ Keep the column selector (`Mostrar u ocultar columnas`) listing **every** data s
 
 Keep the date range filter working the way PrimeReact expects it: the row value used by the filter is the **filter model key**, so date columns must use the hidden milliseconds field (`column + '__mdgdatevalue'`) as both the `filterField` and the key of the entry in the `filters` state, with `filterMatchMode = between` and the inline range calendar as `filterElement`. The same value must be resolved by the Excel export (`resolveFilterRecordField`) so the file matches the grid. Never key a date filter by the display field: the filter menu writes into `filters[filterField]`.
 
+The range must also reach the **controlled** model. The `DataTable` filters the rows with `props.filters` (`getFilters()` returns `props.filters` whenever `onFilter` is passed), so a custom `filterElement` that only calls `options.filterCallback` updates the DataTable's internal copy (`d_filtersState`) and filters **nothing**: the calendar showed the range while every row stayed, the funnel was never marked active and the footer count did not move. The click only writes the panel model (`filterCallback`) and the range enters the control state when the end user presses **Apply**: `showApplyButton` + `onFilterApplyClick` (`applyDateRangeOnAccept()` → `setDateRangeFilterValue()`, which always writes `between` and returns `null` from the state updater when the range did not change, so applying twice does not repaint). PrimeReact's deferred `onFilter` (300 ms of `filterDelay`) arrives afterwards with the same model and `onFilterChange()` ignores it, which is what makes Apply instant. Filtering on every calendar click (calling `filterApplyCallback` there instead) walks all the rows once per clicked day and is the slow path this design removed. `setDateRangeFilterValue()` also resets `currentPage`/`pendingPage`, because the filtered row count changes.
+
 Views (`Views` property) must stay additive: applying one sets the visible columns, the view titles, the view filters, the sorting and the page, and clears the manual filters; manual search/column filters applied afterwards are combined with the view filters. Keep the view parsing tolerant (strict JSON or JavaScript-object style with `;` and unquoted keys): inside `filtros`, `col in (a,b)` (added in `0.0.52`) is the only **OR** — its comma-separated values are compared like `=` and there is no `not in` — while every rule separated by `;` stays **AND** (so two `=` rules on the same column yield zero rows). The `in` comparison is text-based, so on date columns it matches the visible text, not the real date. Never include real customer data in the documentation examples.
 
-Performance work (incremental row mapping, memoized render inputs, compiled column filters, the column header/label memos, search debounce and the optional `window.__mdgPerf` diagnostics) must never change manifest properties or user-visible behavior: keep the dataset property, the export, the pagination and the filters as they are, and keep `shouldComponentUpdate` free of side effects (the dataset `refresh()` is consumed in `componentDidUpdate`). Reuse `helpers/ColumnFilters.ts` (`compileColumnFilters()` + `matchesCompiledFilters()` + `hasActiveColumnFilters()`) whenever the filter model is evaluated over rows: never rebuild the model inside the row loop and never use `JSON.stringify(filters)` as a cache key (use the memoized `filtersSignature()`). Keep the column header/label memos identity-based (columns array reference + the raw property text). Keep `package.json` free of dependencies that are no longer imported (`lodash.isequal` and `flatted` were dropped in `0.0.51`); `obj/` and `out/` stay git-ignored.
+Performance work (incremental row mapping, memoized render inputs, compiled column filters, the column header/label memos, search debounce and the optional `window.__mdgPerf` diagnostics) must never change manifest properties or user-visible behavior: keep the dataset property, the export, the pagination and the filters as they are, and keep `shouldComponentUpdate` free of side effects (the dataset `refresh()` is consumed in `componentDidUpdate`). Never let a filter change re-map the rows, revalidate the dataset or call `notifyOutputChanged()` (since `1.0.0.41`; see the row signature rules above). Reuse `helpers/ColumnFilters.ts` (`compileColumnFilters()` + `matchesCompiledFilters()` + `hasActiveColumnFilters()`) whenever the filter model is evaluated over rows: never rebuild the model inside the row loop and never use `JSON.stringify(filters)` as a cache key (use the memoized `filtersSignature()`). Keep the column header/label memos identity-based (columns array reference + the raw property text). Keep `package.json` free of dependencies that are no longer imported (`lodash.isequal` and `flatted` were dropped in `0.0.51`); `obj/` and `out/` stay git-ignored.
 
 Never enable `virtualScrollerOptions` and the paginator at the same time: the DataTable slices the virtual scroller viewport again with `dataToRender`, so every page beyond the viewport renders empty. Virtualization is enabled only when `DisplayPagination` is false.
 

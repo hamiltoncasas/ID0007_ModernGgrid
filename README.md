@@ -7,7 +7,7 @@
 - **Works Seamlessly with Any Data Source**
 - **Includes Built-In Filtering, Sorting, and Keyword Search**
 - **Supports Pagination** (Ensure "Default Rows" is set above 0 for it to display)
-- **Date range filter** on date and date-and-time columns (both endpoints included)
+- **Date range filter** on date and date-and-time columns (both endpoints included; pick the days and press **Apply**, and the panel shows the selected range)
 - **Views / reports combo** next to the column selector: columns, titles, filters (including `in (a,b)` when a column must match any of several values), sorting and the exported file/sheet defined per view
 - **Per-column formats split by concern**: currency, date, date and time, time, numbers, decimals and Yes/No labels
 
@@ -85,6 +85,8 @@ This is a **dataset** control: its data comes from the `DataSource` data set pro
 
 Large datasets are handled with incremental row mapping (only new rows are formatted), per-row cached search text, stable render inputs for PrimeReact and a 200 ms search debounce (instant with `Enter` or when leaving the field). The Excel export walks the rows with the column filters **compiled once** per filter change (`helpers/ColumnFilters.ts`), and the column headers/labels are memoized by column identity.
 
+Applying a column filter works **in client** over the rows already mapped: it does not re-map the rows, does not revalidate the dataset and does not notify the host (since `1.0.0.41`), so filtering is immediate even with thousands of rows. The date range calendar only records the chosen days and filters when **Apply** is pressed, and any filter change returns the view to page 1.
+
 Optional diagnostics, disabled by default:
 
 ```js
@@ -94,4 +96,4 @@ window.__mdgPerfReport();   // console.table with the accumulated summary
 
 Details, counters and reference measurements: [DOCUMENTATION.md §9.6](DOCUMENTATION.md).
 
-**Current version:** solution `1.0.0.39` · control `0.0.52`.
+**Current version:** solution `1.0.0.41` · control `0.0.54`.

@@ -12,7 +12,7 @@ import { Calendar } from 'primereact/calendar';
 import { RefreshIcon } from 'primereact/icons/refresh';
 import { SearchIcon } from 'primereact/icons/search';
 import { FilterSlashIcon } from 'primereact/icons/filterslash';
-import { endOfDay, startOfDay } from 'date-fns';
+import { endOfDay, format, startOfDay } from 'date-fns';
 import { IInputs } from "../generated/ManifestTypes";
 import { formatDate, normalizeText, toEpochMs } from '../helpers/Utils';
 import { exportRowsToExcel } from '../helpers/ExcelExport';
@@ -88,6 +88,12 @@ interface DateRangeFilterProps {
     dateFormat: string;
     /** Texto accesible del selector. */
     label: string;
+    /** Ayuda visible dentro del panel: explica que hay que elegir los dos extremos. */
+    hint: string;
+    /** Plantilla del resumen del rango elegido; admite `{range}`. */
+    selectedTemplate: string;
+    /** Patrón con el que se escriben los días del resumen (`dd/MM/yyyy`). */
+    rangeFormat: string;
 }
 
 /**
@@ -96,6 +102,10 @@ interface DateRangeFilterProps {
  * primer día queda marcado y al elegir el segundo se aplica el rango (los dos días
  * incluidos). El valor viaja al modelo de filtros como `[inicio, fin]` en
  * milisegundos y PrimeReact lo compara con `between`.
+ *
+ * El rango no se filtra al vuelo: el panel muestra los días elegidos y la grilla se
+ * filtra al pulsar **Aplicar**, de modo que corregir el rango no cueste una pasada
+ * completa por todas las filas en cada clic.
  */
 class DateRangeFilter extends Component<DateRangeFilterProps> {
     onRangeChange = (event: any) => {
@@ -112,6 +122,22 @@ class DateRangeFilter extends Component<DateRangeFilterProps> {
         // Con un solo extremo el filtro queda inactivo hasta que se elija el otro.
         this.props.onChange(end === null ? [start] : [start, end]);
     };
+
+    /** Días elegidos en el panel, escritos con el patrón del idioma (`22/09/2026 → 25/09/2026`). */
+    getSelectedDays(): string {
+        const days = (Array.isArray(this.props.value) ? (this.props.value as any[]) : []).filter(
+            (item) => typeof item === 'number'
+        );
+
+        if (!days.length) {
+            return '';
+        }
+
+        const pattern = this.props.rangeFormat;
+        const from = format(new Date(days[0]), pattern);
+
+        return days.length > 1 ? `${from} → ${format(new Date(days[1]), pattern)}` : from;
+    }
 
     render(): React.ReactElement {
         const value = Array.isArray(this.props.value)
@@ -131,8 +157,24 @@ class DateRangeFilter extends Component<DateRangeFilterProps> {
             panelClassName: 'modern-data-grid-date-filter',
             'aria-label': this.props.label
         };
+        const selected = this.getSelectedDays();
+        // El resumen de los días elegidos se ve mientras se arma el rango; la ayuda solo
+        // mientras falte algún extremo.
+        const showHint = !selected || selected.indexOf('→') === -1;
 
-        return <Calendar {...(options as any)} />;
+        return (
+            <>
+                {!!selected && (
+                    <div className="modern-data-grid-date-filter-selected">
+                        {formatTemplate(this.props.selectedTemplate, { range: selected })}
+                    </div>
+                )}
+                {showHint && !!this.props.hint && (
+                    <div className="modern-data-grid-date-filter-hint">{this.props.hint}</div>
+                )}
+                <Calendar {...(options as any)} />
+            </>
+        );
     }
 }
 
@@ -332,6 +374,8 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     } | null = null;
     /** Componentes del filtro de rango de fechas estables por columna. */
     private columnFilterElementCache = new Map<string, (options: any) => any>();
+    /** Manejadores estables por columna del botón Aplicar del panel de fecha. */
+    private columnApplyClickCache = new Map<string, (event: any) => void>();
     /** Retardo del buscador global: equilibra respuesta inmediata y trabajo por pulsación. */
     private static readonly searchDebounceMs = 200;
     private searchDebounceTimeout: NodeJS.Timeout | null = null;
@@ -987,9 +1031,12 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                 return (
                     <DateRangeFilter
                         value={options?.value}
-                        onChange={(range) => options?.filterCallback && options.filterCallback(range)}
+                        onChange={(range) => this.applyDateRangeFilter(columnName, options, range)}
                         dateFormat={strings.datePickerFormat}
                         label={label}
+                        hint={strings.dateRangeHint}
+                        selectedTemplate={strings.dateRangeSelected}
+                        rangeFormat={strings.dateRangeFormat}
                     />
                 );
             };
@@ -997,6 +1044,84 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         }
 
         return element;
+    }
+
+    /**
+     * Elige el rango de días en el calendario de una columna de fecha.
+     *
+     * El rango se escribe en el modelo del panel (`filterCallback`) y se filtra **al pulsar
+     * Aplicar**: filtrar en cada clic recorrería todas las filas dos o tres veces por día elegido
+     * y es lo que hacía que el calendario se sintiera lento.
+     *
+     * El modelo de filtros lo controla este componente (`filters` + `onFilter`) y el DataTable
+     * filtra las filas con ese mismo modelo, así que al Aplicar el valor tiene que llegar a
+     * `onFilter` (lo hace `applyDateRangeOnAccept`).
+     */
+    applyDateRangeFilter(columnName: string, options: any, range: number[] | null): void {
+        if (typeof options?.filterCallback === 'function') {
+            const index = typeof options.index === 'number' ? options.index : 0;
+
+            options.filterCallback(range, index);
+
+            return;
+        }
+
+        // Sin el modelo del panel a mano: se escribe directamente el modelo del control.
+        this.setDateRangeFilterValue(columnName, range);
+    }
+
+    /**
+     * Al pulsar **Aplicar** en el panel de una columna de fecha se escribe el modelo del control
+     * de inmediato: la grilla filtra sin esperar el aviso diferido del DataTable (`filterDelay`),
+     * que llega después con el mismo valor y ya no vuelve a repintar.
+     */
+    applyDateRangeOnAccept(columnName: string, event: any): void {
+        const model = event?.constraints;
+        const constraints = Array.isArray(model) ? model : model?.constraints;
+        const value = Array.isArray(constraints) && constraints.length ? constraints[0]?.value : null;
+
+        this.setDateRangeFilterValue(columnName, Array.isArray(value) ? value : null);
+    }
+
+    /** Manejador estable del botón Aplicar del panel de fecha de una columna. */
+    getColumnApplyClickHandler(columnName: string): (event: any) => void {
+        let handler = this.columnApplyClickCache.get(columnName);
+
+        if (!handler) {
+            handler = (event: any) => this.applyDateRangeOnAccept(columnName, event);
+            this.columnApplyClickCache.set(columnName, handler);
+        }
+
+        return handler;
+    }
+
+    /**
+     * Escribe el rango de días (milisegundos) en el modelo de filtros del control. Si el rango es
+     * el mismo que ya estaba no se repinta nada, y si cambia la vista vuelve a la primera página
+     * (el número de filas filtradas es otro).
+     */
+    setDateRangeFilterValue(columnName: string, range: number[] | null): void {
+        const key = this.getFilterFieldName(columnName);
+        const value = range && range.length ? range : null;
+
+        this.setState((prevState) => {
+            const current =
+                prevState.filters?.[key] ||
+                this.createColumnFilter({ name: columnName, dataType: this.getColumnDataType(columnName) });
+            const constraints = (current.constraints || [current]).map((constraint: any, index: number) =>
+                // El modo de coincidencia de un rango es siempre `between` (inicio y fin en ms).
+                index === 0
+                    ? { ...constraint, value, matchMode: FilterMatchMode.BETWEEN }
+                    : constraint
+            );
+            const filters = { ...(prevState.filters || {}), [key]: { ...current, constraints } };
+
+            if (this.filtersSignature(prevState.filters) === this.filtersSignature(filters)) {
+                return null;
+            }
+
+            return { filters, currentPage: 1, pendingPage: null };
+        });
     }
 
       mapRecordsToState(force = false) {
@@ -1245,12 +1370,14 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
             this.extraPageDismissed = false;
         }
 
-        const filtersChanged = this.filtersSignature(prevState.filters) !== this.filtersSignature(this.state.filters);
         const formatsChanged =
             this.getFormatSignature(prevProps.context) !== this.getFormatSignature(this.props.context);
 
-        const structuralChange =
-            dataSourceChanged || sortedRecordIdsChanged || filtersChanged || formatsChanged;
+        // Los filtros de columna se aplican en cliente sobre las filas ya mapeadas: un filtro nuevo
+        // no re-mapea la fuente ni revalida el dataset (eso era una recarga completa de la fuente
+        // por cada rango aplicado, y es lo que hacía lento el calendario de fechas). El repintado
+        // lo dispara `shouldComponentUpdate`, que compara el modelo de filtros.
+        const structuralChange = dataSourceChanged || sortedRecordIdsChanged || formatsChanged;
 
         if (structuralChange || rowsChanged) {
             this.mapRecordsToState();
@@ -1919,9 +2046,19 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.setState({ selectedColumns: value });
     };
 
-    /** Filtros de columna de PrimeReact: callback estable (no invalida la memoización de la tabla). */
+    /**
+     * Filtros de columna de PrimeReact: callback estable (no invalida la memoización de la tabla).
+     * Si el modelo no cambió (por ejemplo el aviso diferido que llega después de aplicar un rango)
+     * no se repinta nada; si cambió, la vista vuelve a la primera página.
+     */
     onFilterChange = (event: any) => {
-        this.setState({ filters: event.filters });
+        const filters = event.filters;
+
+        this.setState((prevState) =>
+            this.filtersSignature(prevState.filters) === this.filtersSignature(filters)
+                ? null
+                : { filters, currentPage: 1, pendingPage: null }
+        );
     };
 
     /**
@@ -2749,7 +2886,13 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
                                 filterElement={dateColumn ? this.getColumnFilterElement(col.name) : undefined}
                                 filterPlaceholder={formatTemplate(strings.searchByColumn, { column: columnHeader })}
                                 showFilterMatchModes={!dateColumn}
-                                showApplyButton={false}
+                                // Las fechas se filtran por rango con el botón Aplicar: sin selector
+                                // de operador (and/or) ni reglas adicionales, y sin filtrar en cada
+                                // clic del calendario (eso multiplicaba el coste por cada día elegido).
+                                showFilterOperator={!dateColumn}
+                                showAddButton={!dateColumn}
+                                showApplyButton={dateColumn}
+                                onFilterApplyClick={dateColumn ? this.getColumnApplyClickHandler(col.name) : undefined}
                                 style={this.getColumnStyle(col.name)}
                                 body={this.getColumnBodyRenderer(col.name)}
                             />

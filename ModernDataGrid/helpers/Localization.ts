@@ -36,6 +36,12 @@ export interface GridStrings {
     noView: string;
     /** Etiqueta del selector de rango de fechas de una columna de fecha. */
     dateRangeFilter: string;
+    /** Ayuda del panel de filtro de fecha (se eligen los dos extremos del rango). */
+    dateRangeHint: string;
+    /** Resumen del rango elegido; admite `{range}`. */
+    dateRangeSelected: string;
+    /** Patrón con el que se escriben los días del resumen. */
+    dateRangeFormat: string;
     /** Formato con el que se pintan los días del rango (formato de PrimeReact). */
     datePickerFormat: string;
     /** Nombre de la hoja del libro exportado. */
@@ -58,6 +64,9 @@ const ENGLISH_STRINGS: GridStrings = {
     viewsPlaceholder: 'View',
     noView: 'All records',
     dateRangeFilter: 'Filter by date range',
+    dateRangeHint: 'Pick the first and the last day of the range and press Apply',
+    dateRangeSelected: 'Selected range: {range}',
+    dateRangeFormat: 'MM/dd/yyyy',
     datePickerFormat: 'mm/dd/yy',
     exportSheetName: 'Data'
 };
@@ -78,6 +87,9 @@ const SPANISH_STRINGS: GridStrings = {
     viewsPlaceholder: 'Vista',
     noView: 'Todos los registros',
     dateRangeFilter: 'Filtrar por rango de fechas',
+    dateRangeHint: 'Elige el primer y el último día del rango y pulsa Aplicar',
+    dateRangeSelected: 'Rango seleccionado: {range}',
+    dateRangeFormat: 'dd/MM/yyyy',
     datePickerFormat: 'dd/mm/yy',
     exportSheetName: 'Datos'
 };
