@@ -40,7 +40,7 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0008`
 - Publisher unique name, name, and description: `ID0008`
 - Publisher customization prefix: `ID0008`
-- Solution version: `1.0.0.0`
+- Solution version: `1.0.0.1`
 - PCF control name: `ID0008.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
@@ -238,7 +238,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.0`, solution/publisher `ID0008`, and control `ID0008.ModernDataGrid` (or just run `scripts/package.ps1`, which checks all of it).
+5. Confirm version `1.0.0.1`, solution/publisher `ID0008`, and control `ID0008.ModernDataGrid` (or just run `scripts/package.ps1`, which checks all of it).
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -251,11 +251,11 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.56`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.57`, is separate from the four-part Dataverse solution version.
 
 Date formats are configured in exactly three properties (`DateFormats`, `DateTimeFormats`, `TimeFormats`) and each one applies **only** to columns whose data type matches it: `buildColumnFormat()` resolves the pattern with `findDateAssignment()` and ignores (with a one-off console warning) a column listed in a property of another type, so a mistake never changes another column's format. There is no global date-format property (the `DateFormat` enum was removed in `0.0.50`).
 
-Keep the column selector (`Mostrar u ocultar columnas`) listing **every** data set column: `getBaseColumns()` must never be narrowed by `InitialColumns` (that property only defines the initial selection, resolved by `getInitialSelection()`), otherwise views can lose columns and the selector looks incomplete. The toolbar must stay on a single row (`flex-wrap: nowrap` overrides the PrimeFlex `!important` utilities, so the override needs `!important` too).
+Keep the column selector (`Mostrar u ocultar columnas`) listing **every** data set column: `getBaseColumns()` must never be narrowed by `CamposVisibles` (the old `InitialColumns`; that property only defines the initial selection, resolved by `getInitialSelection()`), otherwise views can lose columns and the selector looks incomplete. The visible **order** comes from `getPreferredColumnOrder()` (the active view's `columnas`, else the order written in `CamposVisibles`, else nothing = data set order) and is applied by `applyPreferredColumnOrder()` **over the filtered list**: listed columns first, the rest after them in data set order. Never sort or reorder the array returned by `getBaseColumns()` in place, and never let the data set order win over a configured list (`getVisibleColumns()` memoizes base + selection + order, so add the order to that cache key). The toolbar must stay on a single row (`flex-wrap: nowrap` overrides the PrimeFlex `!important` utilities, so the override needs `!important` too).
 
 Keep the date range filter working the way PrimeReact expects it: the row value used by the filter is the **filter model key**, so date columns must use the hidden milliseconds field (`column + '__mdgdatevalue'`) as both the `filterField` and the key of the entry in the `filters` state, with `filterMatchMode = between` and the inline range calendar as `filterElement`. The same value must be resolved by the Excel export (`resolveFilterRecordField`) so the file matches the grid. Never key a date filter by the display field: the filter menu writes into `filters[filterField]`.
 

@@ -70,7 +70,7 @@ This is a **dataset** control: its data comes from the `DataSource` data set pro
 | `AllowSorting` | Two options | `true` / `false` | `false` | `true` |
 | `AllowFiltering` | Two options | `true` / `false` | `false` | `true` |
 | `IsEnabled` | Two options | `true` / `false` | `true` | `true` |
-| `CamposVisibles` (*Visible fields*) | Text area | comma separated names, aliases, display names or `ColumnLabels` labels (visible at load; the column selector lists every column) | empty (all columns) | `name, Amount, Date` |
+| `CamposVisibles` (*Visible fields*) | Text area | comma separated names, aliases, display names or `ColumnLabels` labels (visible at load **and their order**; the column selector lists every column) | empty (all columns) | `name, Amount, Date` |
 | `CurrencyFormats` | Text area | `column=ISO[\|locale:xx-XX\|\|decimals:n], …` | empty (`USD`, `en-US`) | `Amount=EUR, Price=USD\|locale:en-US` |
 | `DateFormats` | Text area | `column=pattern, …` (applies **only** to date-only columns) | empty (`yyyy-MM-dd`) | `Due=dd/MM/yyyy` |
 | `DateTimeFormats` | Text area | `column=pattern, …` (applies **only** to date-and-time columns) | empty (`yyyy-MM-dd HH:mm:ss`) | `Created=dd/MM/yyyy HH:mm` |
@@ -102,4 +102,4 @@ window.__mdgPerfReport();   // console.table with the accumulated summary
 
 Details, counters and reference measurements: [DOCUMENTATION.md §9.6](DOCUMENTATION.md).
 
-**Current version:** solution `1.0.0.0` (ID0008_ModernGrid) · control `0.0.56`.
+**Current version:** solution `1.0.0.1` (ID0008_ModernGrid) · control `0.0.57`.

@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0008_ModernGrid` (nombre para mostrar `ID0008`) |
 | Publicador / prefijo | `ID0008` |
-| Versión de la solución | `1.0.0.0` |
+| Versión de la solución | `1.0.0.1` |
 | Control | `ID0008.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.56` |
+| Versión del control (manifest) | `0.0.57` |
 | Namespace | `ID0008` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.56`) y la versión de la solución (`1.0.0.0`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.57`) y la versión de la solución (`1.0.0.1`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 >
 > **Por qué `ID0008` y no `ID0007`:** la línea `ID0007` quedó retenida por apps de lienzo que guardaron su referencia (ver §3.2). Un control con identidad nueva **no hereda** esos vínculos, de modo que `ID0008_ModernGrid` se actualiza y se elimina sin arrastrar el historial. Las apps deben insertar el control nuevo (`ID0008.ModernDataGrid`); la línea `ID0007` sigue disponible en su propio ZIP (`ModernDataGrid.zip` / `ModernDataGrid_managed.zip`, en la raíz del repositorio) mientras se limpia y se borra.
 
@@ -48,9 +48,9 @@ La actualización se hace **sobre la misma solución y el mismo publicador** (`I
 
 | Archivo | Qué se cambia |
 |---|---|
-| `ModernDataGrid/ControlManifest.Input.xml` | `version` del control (hoy `0.0.56`) |
+| `ModernDataGrid/ControlManifest.Input.xml` | `version` del control (hoy `0.0.57`) |
 | `ModernDataGrid/index.ts` | `controlVersion` (el mismo número que el manifest) |
-| `Solution/ID0008_ModernGrid/src/Other/Solution.xml` | `<Version>` de la solución (hoy `1.0.0.0`) |
+| `Solution/ID0008_ModernGrid/src/Other/Solution.xml` | `<Version>` de la solución (hoy `1.0.0.1`) |
 
 ```powershell
 # Empaqueta, copia los ZIP a la raíz y verifica identidad, versiones y metadatos:
@@ -211,7 +211,7 @@ Detalles que conviene conocer:
 | `DecimalFormats` | TextArea | `columna=decimales, …` | vacío | 2 decimales | `Cantidad=3, Precio=2` | Atajo de decimales por columna (ver §8.8) |
 | `BooleanLabels` | TextArea | `columna=Verdadero\|Falso, …` | vacío | `Yes` / `No` | `Activo=Sí\|No` | Etiquetas del tipo Sí/No por columna (ver §8.9) |
 | `Views` | TextArea (JSON) | objeto o arreglo JSON con las vistas | vacío | sin combo de vistas | `{ "activos": { "nombre": "Activos" } }` | Vistas/informes del usuario final: columnas, títulos, filtros y orden (ver §8.10) |
-| `CamposVisibles` (*Campos visibles*) | TextArea | nombres, alias, nombres para mostrar o etiquetas separados por comas | vacío | todas | `ID_Solicitud, Cliente, Fecha` | Columnas **visibles al abrir**. El selector de columnas siempre ofrece todas las del dataset (ver §5.1 y §8.1) |
+| `CamposVisibles` (*Campos visibles*) | TextArea | nombres, alias, nombres para mostrar o etiquetas separados por comas | vacío | todas | `ID_Solicitud, Cliente, Fecha` | Columnas **visibles al abrir** y su **orden**. El selector de columnas siempre ofrece todas las del dataset (ver §5.1 y §8.1) |
 | `ColumnLabels` | TextArea | `columna=Etiqueta visible, otraColumna=Otra etiqueta` | vacío | nombres del dataset | `nombre=Nombre completo, importe=Importe (€)` | Nombres que verá el usuario final para cada columna (ver §5.1 y §8.5) |
 | `Language` | Enum | `en`, `es` | `en` | `en` | `es` | Idioma de todos los textos del control |
 | `RowColorRules` | TextArea | `columna=valor:colorFondo[:colorTexto]\|…, otraColumna=…` (`~` = contiene, `*` = cualquiera) | vacío | sin colores | `estado=Activo:#DFF6DD\|Pendiente:#FFF4CE, prioridad=~alta:#FDE7E9` | Colorea el registro completo según el valor de una columna (ver §7.8) |
@@ -298,6 +298,8 @@ Columnas que se muestran **al cargar**, separadas por comas (nombre, alias, nomb
 ```text
 ID_Solicitud, Cliente, Fecha
 ```
+
+**El orden en que se escriben es el orden de las columnas** en la grilla: primero las de la lista, en ese orden, y detrás las que no aparezcan en ella (por ejemplo las que el usuario añada después con el selector de columnas), en el orden del dataset. El mismo orden se usa al **exportar a Excel**.
 
 No limita el selector de columnas: el selector siempre lista **todas** las columnas del dataset (con su tipo de dato) para que el usuario final pueda marcar cualquier otra. Si el texto no coincide con ninguna columna, se avisa por consola y se muestran todas.
 
@@ -513,7 +515,7 @@ El **total de la tabla en la base de datos no se muestra**.
 `SelectionMode`: `multiple` o `checkbox`. La selección se publica en el dataset (`setSelectedRecordIds`), de modo que la app puede leerla. Con `IsEnabled = false` no se permite seleccionar.
 
 ### 7.6 Selector de columnas (usuario final)
-En la barra hay un desplegable que lista **todas las columnas del dataset** para que el usuario final las marque o desmarque en tiempo de ejecución (por ejemplo, para no ver una columna que no necesita). El disparador es cuadrado y **no muestra texto ni etiquetas** (solo su icono), para que la barra quepa en una fila. `Campos visibles` define qué columnas vienen marcadas al abrir; vacío = todas. La selección del usuario no modifica el dataset, solo lo que se pinta (y lo que se exporta).
+En la barra hay un desplegable que lista **todas las columnas del dataset** para que el usuario final las marque o desmarque en tiempo de ejecución (por ejemplo, para no ver una columna que no necesita). El disparador es cuadrado y **no muestra texto ni etiquetas** (solo su icono), para que la barra quepa en una fila. `Campos visibles` define qué columnas vienen marcadas al abrir **y su orden**; vacío = todas. Las columnas que no estén en ese texto (las que el usuario añade con el selector) se pintan **detrás**, en el orden del dataset. La selección del usuario no modifica el dataset, solo lo que se pinta (y lo que se exporta).
 
 El panel de la lista muestra, en cada opción, el **nombre de la columna** y su **tipo de dato** (Texto, Fecha y hora, Número, Moneda, Sí/No, Opción, Correo…), y lleva dos botones al pie:
 
@@ -614,6 +616,8 @@ ID_Solicitud, Cliente, FechaSolicitud
 ```
 
 Vacío = todas las columnas del dataset. **No limita el selector de columnas**: el usuario final siempre puede marcar cualquier columna del dataset (el selector lista todas, con su tipo de dato). Si ninguna entrada coincide con una columna, la consola lo avisa y se muestran todas.
+
+**Orden de las columnas**: el orden del texto es el orden de la grilla. Las columnas listadas se pintan primero, en ese orden, y las que no estén en la lista (las que el usuario añade con el selector, o las de un vista si no define columnas) se pintan detrás, en el orden del dataset. Se resuelve en `getVisibleColumns()` con `getPreferredColumnOrder()` (memoizado) y `applyPreferredColumnOrder()`, que **nunca** modifican el arreglo de columnas del dataset; el Excel exportado usa la misma lista, así que sale en el mismo orden. Cuando hay una **vista activa con columnas**, su orden manda (es el que se escribió en `columnas`, §8.10).
 
 ### 8.2 `FieldConfigurations` (retirada en `1.0.0.37`)
 Esta propiedad se **eliminó** del control en la versión `1.0.0.37` (control `0.0.50`). En su lugar se usan las propiedades por tipo de dato, que admiten la misma información sin la sintaxis `clave:valor`:
@@ -1237,6 +1241,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.1` / `0.0.57` | **El orden de las columnas sigue la propiedad `Campos visibles` (y el de las vistas).** Hasta ahora `getVisibleColumns()` filtraba las columnas del dataset conservando **su** orden, así que el orden escrito en `CamposVisibles` (y el de `columnas` en una vista) se ignoraba. Ahora las columnas listadas se pintan **delante y en ese orden**, y el resto (por ejemplo las que el usuario añade con el selector de columnas) queda detrás, en el orden del dataset; sin lista configurada todo sigue en el orden del dataset. El orden se resuelve una vez por cambio (`getPreferredColumnOrder()` + `applyPreferredColumnOrder()`, memoizados) y el Excel exportado usa la misma lista, así que sale en el mismo orden. Sin cambios en filtros, calendario, formatos, colores, paginación, selección, dataset ni propiedades del manifest |
 | `1.0.0.0` / `0.0.56` | **Identidad nueva `ID0008_ModernGrid` (publicador `ID0008`), sin cambios de funcionalidad.** La línea `ID0007` quedaba retenida por las apps de lienzo que guardaron su referencia, así que se crea una solución y un publicador **nuevos** que no heredan ningún vínculo: la app conserva su funcionalidad insertando el control `ID0008.ModernDataGrid` (y al quitar las instancias del antiguo, `ID0007` queda libre para borrarse). El proyecto de solución pasa a `Solution/ID0008_ModernGrid`, los paquetes a `ID0008_ModernGrid(.managed).zip` (el control empieza en `1.0.0.0`) y la raíz conserva los ZIP de `ID0007` como referencia. Se documenta el ciclo completo de **actualizar** (§3.1) y de **eliminar** componente, solución y publicador (§3.2, con el "Error al actualizar los componentes de código" y la papelera), más la **auditoría del rastro de metadatos** (§3.2.1: tablas `customcontrol`, `customcontrolresource`/`webresource`, `solutioncomponent`, `dependency`) y dos scripts: `scripts/package.ps1` (empaqueta, copia y **verifica identidad, versiones y que el manifest no declare capacidades ni servicios externos**) y `scripts/dependencias.ps1` (audita con `pac org fetch` qué bloquea el borrado). El control sigue sin declarar `feature-usage` con capacidades ni `external-service-usage`. Sin tocar el código: filtros (rango de fechas incluido), formatos, vistas, colores, paginación, selección, dataset y exportación quedan igual |
 | `1.0.0.42` / `0.0.55` | **Actualización de metadatos en la misma solución y publicador, sin cambios de funcionalidad.** Se suben la versión del control (`0.0.55`) y la de la solución (`1.0.0.42`) para poder reimportar el ZIP sobre `ID0007_ModernGrid`: el **namespace y el publicador no cambian**, así que el nombre único del control (`ID0007_ID0007.ModernDataGrid`) sigue siendo el mismo y las apps de lienzo continúan enlazadas conservando sus propiedades (al cerrar y reabrir la app, Power Apps ofrece actualizar los componentes). Se documenta cómo **actualizar** en la misma solución (§3.1) y cómo **liberar la referencia y eliminar** el componente, la solución y el publicador (§3.2): esa referencia vive en los metadatos de la app de lienzo y en la dependencia de Dataverse, **no** en el manifest del PCF (que no declara `feature-usage` ni `external-service-usage`), por lo que el bloqueo no se resuelve cambiando el control ni su publicador. Sin tocar el código: filtros (rango de fechas incluido), formatos, vistas, colores, paginación, selección, dataset y exportación quedan igual |
 | `1.0.0.41` / `0.0.54` | **Botón Aplicar en el rango de fechas, rango a la vista y filtrado mucho más rápido.** (1) El panel de las columnas de fecha incorpora los botones **Aplicar** y **Limpiar**: elegir días en el calendario ya **no** filtra la grilla (solo se escribe el modelo del panel), y el filtro entra al pulsar **Aplicar**, que además es instantáneo (se escribe el modelo del control en el mismo clic con `onFilterApplyClick` y el aviso diferido de PrimeReact, 300 ms, ya no repinta porque el modelo no cambió). (2) El panel muestra el rango elegido en texto (`Rango seleccionado: 22/09/2026 → 25/09/2026`, con una ayuda mientras falte un extremo) y en las fechas no hay selector `y`/`o` ni reglas adicionales. (3) **Rendimiento**: aplicar un filtro ya **no** revalida el dataset ni hace `notifyOutputChanged()` ni vuelve a mapear las filas (los filtros se aplican en cliente, así que `componentDidUpdate()` ya no trata `filtersChanged` como cambio estructural); antes, cada filtro aplicado costaba un viaje al host + un re-mapeo completo + un repintado, y eso es lo que hacía que el calendario tardara segundos por clic. (4) Al cambiar un filtro la vista vuelve a la **página 1** (`currentPage`/`pendingPage`) para no quedar en una página que ya no existe, y `onFilterChange()` ignora los avisos con el mismo modelo. Sin cambios de propiedades del manifest ni de formatos |

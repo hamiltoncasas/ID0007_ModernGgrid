@@ -335,7 +335,14 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
     private columnsSchemaCache: { source: any[]; key: string } | null = null;
     /** Columnas base y visibles memoizadas. */
     private baseColumnsCache: { source: any[]; columns: any[] } | null = null;
-    private visibleColumnsCache: { base: any[]; selected: string[] | null; columns: any[] } | null = null;
+    private visibleColumnsCache: {
+        base: any[];
+        selected: string[] | null;
+        order: string;
+        columns: any[];
+    } | null = null;
+    /** Orden preferente de las columnas visibles (vista activa o `CamposVisibles`), memoizado. */
+    private preferredOrderCache: { key: string; order: string[] } | null = null;
     /** Nombres de la propiedad `CamposVisibles` memoizados por su texto. */
     private initialColumnsCache: { raw: string; names: string[] } | null = null;
     /** Selección inicial de columnas (a partir de `CamposVisibles`), memoizada. */
@@ -1820,23 +1827,116 @@ class DataGrid extends Component<DataGridProps, DataGridState> {
         this.setState({ selectedColumns: [] });
     };
 
+    /**
+     * Columnas visibles, **en el orden que define la configuración**: el de `CamposVisibles`
+     * (tal como está escrito en la propiedad) o el de la vista activa. Las columnas que no estén
+     * en esa lista (por ejemplo las que el usuario añade con el selector) van detrás, en el orden
+     * del dataset. Sin ninguna lista configurada se mantiene el orden del dataset.
+     */
     getVisibleColumns(): ComponentFramework.PropertyHelper.DataSetApi.Column[] {
         const baseColumns = this.getBaseColumns();
         const selectedColumns = this.state.selectedColumns;
-        if (!selectedColumns) return baseColumns;
+        const order = this.getPreferredColumnOrder();
+        const orderKey = order.join('|');
 
         if (
             this.visibleColumnsCache &&
             this.visibleColumnsCache.base === baseColumns &&
-            this.visibleColumnsCache.selected === selectedColumns
+            this.visibleColumnsCache.selected === selectedColumns &&
+            this.visibleColumnsCache.order === orderKey
         ) {
             return this.visibleColumnsCache.columns;
         }
 
-        const columns = baseColumns.filter((column) => selectedColumns.includes(column.name));
-        this.visibleColumnsCache = { base: baseColumns, selected: selectedColumns, columns };
+        const visible = selectedColumns
+            ? baseColumns.filter((column) => selectedColumns.includes(column.name))
+            : baseColumns;
+        const columns = this.applyPreferredColumnOrder(visible, order);
+        this.visibleColumnsCache = { base: baseColumns, selected: selectedColumns, order: orderKey, columns };
 
         return columns;
+    }
+
+    /**
+     * Orden preferente de las columnas: el de la **vista activa** si la hay y, si no, el de
+     * **`CamposVisibles`**. Vacío = orden del dataset. Memoizado por vista, texto de la propiedad
+     * y columnas del dataset (la propiedad puede tener nombres lógicos, alias o etiquetas).
+     */
+    getPreferredColumnOrder(): string[] {
+        const raw = this.props.context.parameters.CamposVisibles?.raw || '';
+        const key = `${this.state.activeView || ''}|${raw}|${this.getColumnsSchemaKey(this.getBaseColumns())}`;
+
+        if (this.preferredOrderCache?.key === key) {
+            return this.preferredOrderCache.order;
+        }
+
+        const order = this.buildPreferredColumnOrder(raw);
+        this.preferredOrderCache = { key, order };
+
+        return order;
+    }
+
+    /** Nombres lógicos de las columnas en el orden en que están escritas en `CamposVisibles`. */
+    buildPreferredColumnOrder(raw: string): string[] {
+        if (!raw.trim()) {
+            return [];
+        }
+
+        const view = this.getCompiledView();
+
+        if (view && view.columns.length) {
+            return view.columns.slice();
+        }
+
+        const labels = this.getColumnLabels();
+        const columns = this.getBaseColumns();
+        const order: string[] = [];
+
+        // Se recorre el texto de la propiedad (no el arreglo de columnas) para conservar el orden
+        // en que el programador escribió los nombres, sea cual sea el orden del dataset.
+        this.getInitialColumnNames().forEach((wanted) => {
+            const column = columns.find((candidate) =>
+                [candidate.name, candidate.alias, candidate.displayName, labels[candidate.name]]
+                    .filter(Boolean)
+                    .some((identifier) => normalizeText(String(identifier)) === wanted)
+            );
+
+            if (column && !order.includes(column.name)) {
+                order.push(column.name);
+            }
+        });
+
+        return order;
+    }
+
+    /**
+     * Pone delante las columnas del orden preferente (en ese orden) y deja detrás el resto,
+     * conservando el orden del dataset. No modifica el arreglo original de columnas.
+     */
+    applyPreferredColumnOrder(
+        columns: ComponentFramework.PropertyHelper.DataSetApi.Column[],
+        order: string[]
+    ): ComponentFramework.PropertyHelper.DataSetApi.Column[] {
+        if (order.length < 2) {
+            return columns;
+        }
+
+        const rank = new Map<string, number>();
+        order.forEach((name, index) => {
+            if (!rank.has(name)) {
+                rank.set(name, index);
+            }
+        });
+
+        const preferred = columns
+            .filter((column) => rank.has(column.name))
+            .sort((left, right) => (rank.get(left.name) as number) - (rank.get(right.name) as number));
+
+        if (!preferred.length) {
+            return columns;
+        }
+
+        return preferred.concat(columns.filter((column) => !rank.has(column.name)));
     }
 
     /** Tamaños de página del pie (memoizado por tamaño activo: identidad estable en cada render). */
