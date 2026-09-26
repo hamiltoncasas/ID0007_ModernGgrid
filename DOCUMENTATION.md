@@ -8,14 +8,16 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 
 | Elemento | Valor |
 |---|---|
-| Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
-| Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.42` |
-| Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.55` |
-| Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
+| Nombre de la solución | `ID0008_ModernGrid` (nombre para mostrar `ID0008`) |
+| Publicador / prefijo | `ID0008` |
+| Versión de la solución | `1.0.0.0` |
+| Control | `ID0008.ModernDataGrid` (constructor `ModernDataGrid`) |
+| Versión del control (manifest) | `0.0.56` |
+| Namespace | `ID0008` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.55`) y la versión de la solución (`1.0.0.42`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.56`) y la versión de la solución (`1.0.0.0`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+>
+> **Por qué `ID0008` y no `ID0007`:** la línea `ID0007` quedó retenida por apps de lienzo que guardaron su referencia (ver §3.2). Un control con identidad nueva **no hereda** esos vínculos, de modo que `ID0008_ModernGrid` se actualiza y se elimina sin arrastrar el historial. Las apps deben insertar el control nuevo (`ID0008.ModernDataGrid`); la línea `ID0007` sigue disponible en su propio ZIP (`ModernDataGrid.zip` / `ModernDataGrid_managed.zip`, en la raíz del repositorio) mientras se limpia y se borra.
 
 ## 2. Requisitos
 
@@ -28,33 +30,41 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 Los paquetes se generan en:
 
 ```text
-Solution\ModernDataGrid\bin\Release\ModernDataGrid_managed.zip     (gestionada)
-Solution\ModernDataGrid\bin\Release\ModernDataGrid.zip             (no gestionada)
+Solution\ID0008_ModernGrid\bin\Release\ID0008_ModernGrid_managed.zip   (gestionada)
+Solution\ID0008_ModernGrid\bin\Release\ID0008_ModernGrid.zip           (no gestionada)
+Raíz del repositorio: ID0008_ModernGrid_managed.zip / ID0008_ModernGrid.zip   (copia lista para importar)
 ```
 
 1. Power Apps Maker → **Soluciones** → **Importar solución** → seleccionar el ZIP.
 2. Usar **solo** el ZIP recién generado (no descargas antiguas) y el **managed** para producción.
 3. Si ya tenías la versión anterior, la importación la actualiza siempre que la versión sea mayor.
 4. Tras importar, **cierra y vuelve a abrir** la app de lienzo para que el navegador descargue el nuevo `bundle.js` (si ves el comportamiento anterior, es caché).
+5. En los entornos de destino importa **siempre el paquete gestionado**: al desinstalarlo se lleva sus metadatos (el control, sus recursos y su pertenencia a la solución). El **no gestionado** es para el entorno de desarrollo.
+6. La raíz del repositorio conserva además `ModernDataGrid.zip` / `ModernDataGrid_managed.zip`, que son la línea **antigua** (`ID0007`): sirven de referencia mientras se limpian esos entornos.
 
 ### 3.1 Actualizar el componente en la misma solución
 
-La actualización se hace **sobre la misma solución y el mismo publicador** (`ID0007_ModernGrid` / `ID0007`): solo hay que subir las dos versiones, recompilar y reimportar el ZIP.
+La actualización se hace **sobre la misma solución y el mismo publicador** (`ID0008_ModernGrid` / `ID0008`): solo hay que subir las dos versiones, recompilar y reimportar el ZIP.
 
 | Archivo | Qué se cambia |
 |---|---|
-| `ModernDataGrid/ControlManifest.Input.xml` | `version` del control (hoy `0.0.55`) |
+| `ModernDataGrid/ControlManifest.Input.xml` | `version` del control (hoy `0.0.56`) |
 | `ModernDataGrid/index.ts` | `controlVersion` (el mismo número que el manifest) |
-| `Solution/ModernDataGrid/src/Other/Solution.xml` | `<Version>` de la solución (hoy `1.0.0.42`) |
+| `Solution/ID0008_ModernGrid/src/Other/Solution.xml` | `<Version>` de la solución (hoy `1.0.0.0`) |
 
 ```powershell
+# Empaqueta, copia los ZIP a la raíz y verifica identidad, versiones y metadatos:
+powershell -ExecutionPolicy Bypass -File scripts\package.ps1
+
+# (o a mano)
 npm run build
-dotnet build 'Solution\ModernDataGrid\ModernDataGrid.cdsproj' -c Release
+dotnet build 'Solution\ID0008_ModernGrid\ID0008_ModernGrid.cdsproj' -c Release
 ```
 
-Como el **namespace y el publicador no cambian**, el nombre único del control (`ID0007_ID0007.ModernDataGrid`) sigue siendo el mismo: las apps de lienzo **continúan enlazadas y conservan sus propiedades**, y al cerrar y reabrir la app Power Apps ofrece **actualizar los componentes**. Publica las personalizaciones de la app para que el cambio quede guardado.
+Como el **namespace y el publicador no cambian**, el nombre único del control (`ID0008_ID0008.ModernDataGrid`) sigue siendo el mismo: las apps de lienzo **continúan enlazadas y conservan sus propiedades**, y al cerrar y reabrir la app Power Apps ofrece **actualizar los componentes**. Publica las personalizaciones de la app para que el cambio quede guardado.
 
-> **Nunca** cambies el `namespace` del manifest ni el publicador si quieres conservar las apps actuales: eso registra un control nuevo (`ID0007.ModernDataGrid` → otro) y hay que insertarlo otra vez en cada pantalla, con sus propiedades desde cero.
+> **Nunca** cambies el `namespace` del manifest ni el publicador si quieres conservar las apps actuales: eso registra un control **nuevo** y hay que insertarlo otra vez en cada pantalla, con sus propiedades desde cero. Solo tiene sentido cuando la identidad anterior está "atrapada" (fue el motivo del cambio `ID0007` → `ID0008`, §3.2).
+> Una solución **nueva** puede empezar su numeración en `1.0.0.0` (es el caso de `ID0008_ModernGrid`); a partir de ahí, cada publicación sube la versión.
 
 ### 3.2 Eliminar el componente, la solución o el publicador
 
@@ -64,15 +74,50 @@ Mientras exista esa dependencia, Dataverse impide borrar la solución (y, con el
 
 1. Abre **cada app** que use el control (Power Apps Studio) → **Vista de árbol** → en la pantalla, junto al componente: **… (Más) → Eliminar** → **Guardar**.
 2. **Cierra y vuelve a abrir la app**: Power Apps Studio solo recalcula los componentes al reabrir la app; borrar la instancia de la pantalla no reescribe por sí solo los metadatos guardados. Después **Publica** (Archivo → Guardar y publicar).
-3. Comprueba que tampoco queda como componente ni como origen de datos dentro de la app.
-4. Comprueba la dependencia: en el **Explorador de soluciones clásico**, selecciona el componente `ID0007` y mira la pestaña **Dependencias**: ahí aparece la app que lo retiene. Mientras siga listada, el borrado se bloqueará.
-5. Si la referencia se queda "pegada", la vía más fiable es **restaurar una versión de la app** anterior a haber insertado el control (App → Detalles → Versiones) o **eliminar la app**; con eso desaparece la dependencia.
-6. Borra en este orden: **apps → solución → publicador**.
-   - Solución: Maker → **Soluciones** → `ID0007_ModernGrid` → **Eliminar** (si está gestionada, **Desinstalar**) en el entorno donde se importó.
-   - Publicador: Maker → **Configuración avanzada** → **Publicadores** (o Soluciones → Publicadores) → `ID0007` → **Eliminar**.
+3. Comprueba que tampoco queda como componente ni como origen de datos dentro de la app: revisa la pestaña **Components** del árbol (por si estuviera dentro de un componente de lienzo) y recuerda que los componentes de código **no** se soportan dentro de **bibliotecas de componentes** (así que ahí no puede estar).
+4. Comprueba la dependencia: en el **Explorador de soluciones clásico**, selecciona el componente y mira la pestaña **Dependencias**: ahí aparece la app que lo retiene. Mientras siga listada, el borrado se bloqueará. Equivalente con el script:
+   ```powershell
+   pac auth create --environment https://<org>.crm.dynamics.com   # una sola vez
+   powershell -ExecutionPolicy Bypass -File scripts\dependencias.ps1
+   ```
+5. Si la referencia se queda "pegada", la vía más fiable es **restaurar una versión de la app** anterior a haber insertado el control (App → Detalles → Versiones) o **eliminar la app** y **vaciar la papelera de reciclaje** (Configuración avanzada → Configuración → Administración de datos → Papelera de reciclaje, vista **Canvas App**).
+6. Si el aviso **"Error al actualizar los componentes de código"** impide dejar la app limpia: ábrela **sin actualizar**, anota sus propiedades configuradas, borra las instancias, **guarda**, **cierra todas las pestañas**, reabre (si vuelve el aviso, acéptalo ya sin instancias) y **publica**.
+7. Revisa que el componente no esté **duplicado**: una capa unmanaged junto a la managed, o una copia bajo el publicador **Default** (pasa si alguna vez se instaló con `pac pcf push`). Deja **una sola** capa antes de borrar.
+8. Borra en este orden: **apps → solución → publicador**.
+   - Solución: Maker → **Soluciones** → `ID0008_ModernGrid` → **Eliminar** (si está gestionada, **Desinstalar**) en el entorno donde se importó.
+   - Publicador: Maker → **Configuración avanzada** → **Publicadores** (o Soluciones → Publicadores) → `ID0008` → **Eliminar**.
+9. Si no consigues dejar la app limpia y ese entorno no te hace falta, **elimínalo completo** desde el Centro de administración de Power Platform: el contenido se va con él.
 
-> Si alguna vez instalaste el control con `pac pcf push`, puede estar registrado bajo el publicador **Default** en lugar de `ID0007`: revísalo antes de borrar.
+> Con la identidad **nueva** (`ID0008.ModernDataGrid`) el ciclo es el mismo, pero parte de cero: al insertar el control nuevo en tus apps y quitar las instancias del antiguo, el vínculo con `ID0007` desaparece y esa solución ya se puede borrar.
 > Referencia oficial: Microsoft Learn, *Code components for canvas apps* → sección *Delete a code component from a canvas app*.
+
+#### 3.2.1 Rastro de metadatos del control (auditoría)
+
+Al importar, un componente de código deja exactamente esto en Dataverse:
+
+| Tabla (nombre lógico) | Qué guarda del control | ¿Se va al desinstalar la solución gestionada? |
+|---|---|---|
+| `customcontrol` | El componente: `name` (`ID0008_ID0008.ModernDataGrid`), `manifest`, `clientjson`, `version` | Sí |
+| `customcontrolresource` + `webresource` | El `bundle.js` y sus assets (fuentes, SVG) | Sí |
+| `solutioncomponent` | La pertenencia a `ID0008_ModernGrid` (componenttype 66) | Sí |
+| `customcontroldefaultconfig` (68) | Solo si se usó además en un formulario/vista model-driven | Sí |
+| `dependency` | **Solo si una app (300) lo usa**: la fila 300 → 66; es la que **bloquea** el borrado | Sí, siempre que ya no queden dependencias |
+
+El manifest **no declara capacidades ni servicios externos**: el build añade `<feature-usage/>` **vacío**, `api-version` y `<built-by>` (§9.4). El empaquetado (`scripts\package.ps1`) **falla** si alguien mete capacidades dentro de `<feature-usage>` o un `<external-service-usage>`.
+
+Consultas de auditoría (sustituye `<org>`; equivalen a lo que hace `scripts\dependencias.ps1`):
+
+```http
+# Existe y en qué versión
+https://<org>.api.crm.dynamics.com/api/data/v9.2/customcontrols?$select=name,customcontrolid,version&$filter=name eq 'ID0008_ID0008.ModernDataGrid'
+# Quién lo retiene (66 = Custom Control; dependencytype 1 interno, 2 publicado, 4 borrador sin publicar)
+https://<org>.api.crm.dynamics.com/api/data/v9.2/dependencies?$select=dependentcomponenttype,dependentcomponentobjectid,dependencytype&$filter=requiredcomponenttype eq 66
+# Qué solución hay instalada y de qué tipo (managed = 1)
+https://<org>.api.crm.dynamics.com/api/data/v9.2/solutions?$select=uniquename,version,ismanaged,installedon&$filter=uniquename eq 'ID0008_ModernGrid'
+```
+
+Tipos de componente que pueden aparecer como dependientes: **300** Canvas App, **66/68** Custom Control, **24** Form, **26** Saved Query, **60** System Form, **29** Workflow (flujo), **92** paso de plugin, **61** Web Resource.
+
 
 ## 4. Uso en la aplicación
 
@@ -906,8 +951,10 @@ Vistas que el usuario final elige en el **combo de la barra**, junto al selector
 | `ModernDataGrid/helpers/RowColoring.ts` | Compilador de reglas de color de fila |
 | `ModernDataGrid/helpers/Localization.ts` | Textos es/en y locale español de PrimeReact |
 | `Modern-Data-Grid.pcfproj` | Proyecto MSBuild del PCF (salida `out/controls`) |
-| `Solution/ModernDataGrid/ModernDataGrid.cdsproj` | Proyecto de solución Dataverse (`SolutionPackageType=Both`) |
-| `Solution/ModernDataGrid/src/Other/Solution.xml` | Metadatos de solución/publicador/versión |
+| `Solution/ID0008_ModernGrid/ID0008_ModernGrid.cdsproj` | Proyecto de solución Dataverse (`SolutionPackageType=Both`) |
+| `Solution/ID0008_ModernGrid/src/Other/Solution.xml` | Metadatos de solución/publicador/versión |
+| `scripts/package.ps1` | Build + empaquetado + copia a la raíz + verificación de identidad, versiones y metadatos |
+| `scripts/dependencias.ps1` | Auditoría con `pac org fetch`: qué bloquea el borrado (dependencias, solución y tipo) |
 | `.github/skills/modern-data-grid/SKILL.md` | Guía de trabajo del proyecto para asistentes de código |
 
 ### 9.2 Compilar y empaquetar
@@ -917,14 +964,18 @@ Desde la raíz del proyecto:
 ```powershell
 npm install
 npm run build                 # compila el control en out\controls
-dotnet msbuild .\Solution\ModernDataGrid\ModernDataGrid.cdsproj /t:Build /p:Configuration=Release
+dotnet msbuild .\Solution\ID0008_ModernGrid\ID0008_ModernGrid.cdsproj /t:Build /p:Configuration=Release
+
+# o todo en uno (build + empaquetado + copia a la raíz + verificación):
+powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
 
 Salidas esperadas:
 
 ```text
-Solution\ModernDataGrid\bin\Release\ModernDataGrid.zip
-Solution\ModernDataGrid\bin\Release\ModernDataGrid_managed.zip
+Solution\ID0008_ModernGrid\bin\Release\ID0008_ModernGrid.zip
+Solution\ID0008_ModernGrid\bin\Release\ID0008_ModernGrid_managed.zip
+ID0008_ModernGrid.zip / ID0008_ModernGrid_managed.zip   (copia en la raíz del repositorio)
 ```
 
 Reconstrucción limpia:
@@ -940,7 +991,7 @@ npm run build
 2. `npm run build` (regenera `generated/ManifestTypes.d.ts`; **no** editar ese archivo a mano).
 3. Comprueba que ningún atributo del manifest tenga apóstrofos (ver §9.4).
 4. Sube la versión de la solución en `Solution.xml` si vas a importar la actualización.
-5. Empaqueta con MSBuild y verifica que el log muestre `- ID0007.ModernDataGrid`.
+5. Empaqueta con MSBuild y verifica que el log muestre `- ID0008.ModernDataGrid`.
 6. Importa **solo** el ZIP recién generado.
 
 ### 9.4 Notas de implementación (mantenimiento)
@@ -1087,7 +1138,7 @@ El buscador, el selector de columnas, el **combo de vistas**, el refresco y la e
 | El filtro por columna no filtraba | Corregido en la versión de solución `1.0.0.17`; comprueba que importaste esa versión o superior |
 | No aparecía el botón de exportar / iconos vacíos | Corregido en `1.0.0.18` (barra con `flex-wrap`) y `1.0.0.20` (iconos SVG, sin depender de la fuente) |
 | Tras importar sigo viendo la versión anterior | Caché: cierra y vuelve a abrir la app. Además la importación solo actualiza si la versión de la solución es mayor |
-| No puedo eliminar la solución `ID0007_ModernGrid` ni el publicador `ID0007` | El bloqueo no está en el PCF: la referencia vive en la **app de lienzo** y en la dependencia que Dataverse registra. Borra el control de la app, guarda, **cierra y vuelve a abrir** la app y **publica**; si sigue, restaura una versión anterior de la app o elimínala. Procedimiento completo en §3.2 |
+| No puedo eliminar la solución `ID0008_ModernGrid` ni el publicador `ID0008` (o la antigua `ID0007_ModernGrid`) | El bloqueo no está en el PCF: la referencia vive en la **app de lienzo** y en la dependencia que Dataverse registra. Borra el control de la app, guarda, **cierra y vuelve a abrir** la app y **publica**; si sigue, restaura una versión anterior de la app o elimínala. Comprueba con `scripts\dependencias.ps1`. Procedimiento completo en §3.2 |
 | Borré el control de la app y sigue bloqueando la eliminación | Los metadatos del componente se recalculan al **cerrar y reabrir** la app y al **publicar**, no al borrar la instancia de la pantalla. Comprueba la pestaña **Dependencias** del componente en el Explorador de soluciones clásico (§3.2) |
 | Actualicé el componente y la app no muestra los cambios | Sube la `version` del manifest y la `<Version>` de la solución, reimporta el ZIP y **publica** las personalizaciones; después cierra y reabre la app (caché del `bundle.js`). Ver §3.1 |
 | La exportación no descarga el archivo | Usa Edge/Chrome actualizado y revisa que el navegador no bloquee descargas |
@@ -1186,6 +1237,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.0` / `0.0.56` | **Identidad nueva `ID0008_ModernGrid` (publicador `ID0008`), sin cambios de funcionalidad.** La línea `ID0007` quedaba retenida por las apps de lienzo que guardaron su referencia, así que se crea una solución y un publicador **nuevos** que no heredan ningún vínculo: la app conserva su funcionalidad insertando el control `ID0008.ModernDataGrid` (y al quitar las instancias del antiguo, `ID0007` queda libre para borrarse). El proyecto de solución pasa a `Solution/ID0008_ModernGrid`, los paquetes a `ID0008_ModernGrid(.managed).zip` (el control empieza en `1.0.0.0`) y la raíz conserva los ZIP de `ID0007` como referencia. Se documenta el ciclo completo de **actualizar** (§3.1) y de **eliminar** componente, solución y publicador (§3.2, con el "Error al actualizar los componentes de código" y la papelera), más la **auditoría del rastro de metadatos** (§3.2.1: tablas `customcontrol`, `customcontrolresource`/`webresource`, `solutioncomponent`, `dependency`) y dos scripts: `scripts/package.ps1` (empaqueta, copia y **verifica identidad, versiones y que el manifest no declare capacidades ni servicios externos**) y `scripts/dependencias.ps1` (audita con `pac org fetch` qué bloquea el borrado). El control sigue sin declarar `feature-usage` con capacidades ni `external-service-usage`. Sin tocar el código: filtros (rango de fechas incluido), formatos, vistas, colores, paginación, selección, dataset y exportación quedan igual |
 | `1.0.0.42` / `0.0.55` | **Actualización de metadatos en la misma solución y publicador, sin cambios de funcionalidad.** Se suben la versión del control (`0.0.55`) y la de la solución (`1.0.0.42`) para poder reimportar el ZIP sobre `ID0007_ModernGrid`: el **namespace y el publicador no cambian**, así que el nombre único del control (`ID0007_ID0007.ModernDataGrid`) sigue siendo el mismo y las apps de lienzo continúan enlazadas conservando sus propiedades (al cerrar y reabrir la app, Power Apps ofrece actualizar los componentes). Se documenta cómo **actualizar** en la misma solución (§3.1) y cómo **liberar la referencia y eliminar** el componente, la solución y el publicador (§3.2): esa referencia vive en los metadatos de la app de lienzo y en la dependencia de Dataverse, **no** en el manifest del PCF (que no declara `feature-usage` ni `external-service-usage`), por lo que el bloqueo no se resuelve cambiando el control ni su publicador. Sin tocar el código: filtros (rango de fechas incluido), formatos, vistas, colores, paginación, selección, dataset y exportación quedan igual |
 | `1.0.0.41` / `0.0.54` | **Botón Aplicar en el rango de fechas, rango a la vista y filtrado mucho más rápido.** (1) El panel de las columnas de fecha incorpora los botones **Aplicar** y **Limpiar**: elegir días en el calendario ya **no** filtra la grilla (solo se escribe el modelo del panel), y el filtro entra al pulsar **Aplicar**, que además es instantáneo (se escribe el modelo del control en el mismo clic con `onFilterApplyClick` y el aviso diferido de PrimeReact, 300 ms, ya no repinta porque el modelo no cambió). (2) El panel muestra el rango elegido en texto (`Rango seleccionado: 22/09/2026 → 25/09/2026`, con una ayuda mientras falte un extremo) y en las fechas no hay selector `y`/`o` ni reglas adicionales. (3) **Rendimiento**: aplicar un filtro ya **no** revalida el dataset ni hace `notifyOutputChanged()` ni vuelve a mapear las filas (los filtros se aplican en cliente, así que `componentDidUpdate()` ya no trata `filtersChanged` como cambio estructural); antes, cada filtro aplicado costaba un viaje al host + un re-mapeo completo + un repintado, y eso es lo que hacía que el calendario tardara segundos por clic. (4) Al cambiar un filtro la vista vuelve a la **página 1** (`currentPage`/`pendingPage`) para no quedar en una página que ya no existe, y `onFilterChange()` ignora los avisos con el mismo modelo. Sin cambios de propiedades del manifest ni de formatos |
 | `1.0.0.40` / `0.0.53` | **Corregido: el filtro de rango de fechas no filtraba.** El valor del calendario se escribía solo en el estado interno del `DataTable` (`filterCallback`) mientras la grilla filtra con el modelo del control (`filters` + `onFilter`), así que el rango se veía en el calendario pero la tabla seguía mostrando todas las filas, el embudo no se marcaba activo y el contador *Filtrados* no cambiaba. Ahora el rango llega al modelo del control (`between` con `[inicioDelDía, finDelDía]`, ambos extremos incluidos) y la exportación a Excel filtra el mismo conjunto. En el panel de las columnas de fecha se retira el selector de operador `Coincidir todo / Coincidir con cualquiera` (`showFilterOperator`) y las reglas adicionales (`showAddButton`): en las fechas **solo existe la coincidencia total**, con una línea de ayuda en el panel. Sin cambios de propiedades del manifest |

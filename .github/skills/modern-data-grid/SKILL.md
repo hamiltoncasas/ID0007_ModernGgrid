@@ -27,22 +27,26 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - `ModernDataGrid/helpers/ColumnFilters.ts`: compiles the PrimeReact filter model once per change (record field, `and`/`or` operator and `FilterService` predicate) so the Excel export never rebuilds it per row.
 - `ModernDataGrid/components/ExcelIcon.tsx`: inline SVG icon for the Excel button.
 - `Modern-Data-Grid.pcfproj`: PCF MSBuild project.
-- `Solution/ModernDataGrid/ModernDataGrid.cdsproj`: Dataverse solution project.
-- `Solution/ModernDataGrid/src/Other/Solution.xml`: solution and publisher metadata.
-- `Solution/ModernDataGrid/bin/Release/`: generated solution ZIPs.
+- `Solution/ID0008_ModernGrid/ID0008_ModernGrid.cdsproj`: Dataverse solution project.
+- `Solution/ID0008_ModernGrid/src/Other/Solution.xml`: solution and publisher metadata.
+- `Solution/ID0008_ModernGrid/bin/Release/`: generated solution ZIPs.
+- `scripts/package.ps1`: build + package + copy to the root + identity/version/metadata verification (guard).
+- `scripts/dependencias.ps1`: `pac org fetch` audit of what blocks deleting the solution/publisher.
 - `DOCUMENTATION.md`: maker and user documentation (properties in detail §5.1, copy-ready examples §5.2, per-data-type formats §8.x, import checklist §9.5, troubleshooting and FAQ §11, changelog §13). Update it together with the manifest whenever properties change.
 
 ## Current Identity
 
-- Solution unique name: `ID0007_ModernGrid`
-- Solution display name: `ID0007`
-- Publisher unique name, name, and description: `ID0007`
-- Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.42`
-- PCF control name: `ID0007.ModernDataGrid`
+- Solution unique name: `ID0008_ModernGrid`
+- Solution display name: `ID0008`
+- Publisher unique name, name, and description: `ID0008`
+- Publisher customization prefix: `ID0008`
+- Solution version: `1.0.0.0`
+- PCF control name: `ID0008.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
-The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `GUK.ModernDataGrid` owned by another publisher and importing it fails. If the identity changes, update both `Solution.xml` and `ControlManifest.Input.xml`, then rebuild the PCF before packaging.
+The namespace must remain `ID0008`. Never restore `GUK`; Dataverse already has `GUK.ModernDataGrid` owned by another publisher and importing it fails. If the identity changes, update both `Solution.xml` and `ControlManifest.Input.xml`, then rebuild the PCF before packaging.
+
+**Why `ID0008` and not the old `ID0007`.** The `ID0007` line got trapped: canvas apps keep the reference to a code component after the instance is deleted, so Dataverse refused to delete that solution/publisher. A brand-new identity does not inherit those links, so `ID0008_ModernGrid` can be updated and deleted on its own; apps migrate by inserting `ID0008.ModernDataGrid` and removing the old instances. The legacy `ID0007` packages stay in the repository root (`ModernDataGrid*.zip`) as a reference until those environments are cleaned.
 
 **Updating vs. re-branding.** To publish a new build into the *same* solution, only bump the two versions (manifest `version` + `Solution.xml` `<Version>`) and keep the namespace and the publisher: the control's unique name stays `ID0007_ID0007.ModernDataGrid`, so canvas apps remain linked and keep their configured properties (Power Apps asks to update the components when the app is reopened). Changing the namespace or the publisher registers a **different** control and forces re-inserting it in every screen, and it does **not** release the old link: apps keep depending on the previous component until they are cleaned up. Step by step: `DOCUMENTATION.md` §3.1.
 
@@ -210,14 +214,18 @@ npm run build
 Create both solution packages:
 
 ```powershell
-dotnet msbuild .\Solution\ModernDataGrid\ModernDataGrid.cdsproj /t:Build /p:Configuration=Release
+# todo en uno (build + empaquetado + copia a la raiz + verificacion de identidad/versiones/metadatos):
+powershell -ExecutionPolicy Bypass -File scripts\package.ps1
+
+# o solo el empaquetado:
+dotnet msbuild .\Solution\ID0008_ModernGrid\ID0008_ModernGrid.cdsproj /t:Build /p:Configuration=Release
 ```
 
 Expected outputs:
 
 ```text
-Solution/ModernDataGrid/bin/Release/ModernDataGrid.zip
-Solution/ModernDataGrid/bin/Release/ModernDataGrid_managed.zip
+Solution/ID0008_ModernGrid/bin/Release/ID0008_ModernGrid.zip
+Solution/ID0008_ModernGrid/bin/Release/ID0008_ModernGrid_managed.zip
 ```
 
 The solution project must keep `<SolutionPackageType>Both</SolutionPackageType>`. The build targets .NET Framework 4.6.2 and uses `Microsoft.NETFramework.ReferenceAssemblies.net462` version `1.0.0`.
@@ -230,20 +238,20 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.42`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.0`, solution/publisher `ID0008`, and control `ID0008.ModernDataGrid` (or just run `scripts/package.ps1`, which checks all of it).
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
 
 ```text
-- ID0007.ModernDataGrid
+- ID0008.ModernDataGrid
 ```
 
 ## Manifest Rules
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.55`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.56`, is separate from the four-part Dataverse solution version.
 
 Date formats are configured in exactly three properties (`DateFormats`, `DateTimeFormats`, `TimeFormats`) and each one applies **only** to columns whose data type matches it: `buildColumnFormat()` resolves the pattern with `findDateAssignment()` and ignores (with a one-off console warning) a column listed in a property of another type, so a mistake never changes another column's format. There is no global date-format property (the `DateFormat` enum was removed in `0.0.50`).
 

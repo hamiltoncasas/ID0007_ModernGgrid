@@ -6,7 +6,7 @@ import DataGrid from "./components/DataGrid";
 
 export class ModernDataGrid implements ComponentFramework.ReactControl<IInputs, IOutputs> {
     /** Versión del control (debe coincidir con la del manifest); se registra al inicializar. */
-    private static readonly controlVersion = '0.0.55';
+    private static readonly controlVersion = '0.0.56';
     private container: HTMLDivElement;
     private notifyOutputChanged: () => void;
     /** Número de veces que el host ha pedido pintar el control (diagnóstico con `window.__mdgPerf`). */
@@ -19,7 +19,7 @@ export class ModernDataGrid implements ComponentFramework.ReactControl<IInputs, 
         state: ComponentFramework.Dictionary,
         container: HTMLDivElement
     ): void {
-        console.log(`Modern Data Grid (ID0007) ${ModernDataGrid.controlVersion}`);
+        console.log(`Modern Data Grid (ID0008) ${ModernDataGrid.controlVersion}`);
         this.container = container;
         this.notifyOutputChanged = notifyOutputChanged;
     }

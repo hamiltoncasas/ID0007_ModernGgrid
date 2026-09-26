@@ -36,9 +36,11 @@ To ensure the custom component runs properly, you must first enable code compone
    ![modernDataGrid_4](https://github.com/user-attachments/assets/ea55fa6b-3ee9-4a6e-8f58-03479f5346d7)
 4. Click **Import solution** from the ribbon and follow the prompts.
 
-> **Updating:** bump the control `version` (`ControlManifest.Input.xml` + `ModernDataGrid/index.ts`) and the solution `<Version>` in `Solution/ModernDataGrid/src/Other/Solution.xml`, rebuild and import the ZIP **again over the same solution** (`ID0007_ModernGrid`). The control namespace and publisher do not change, so existing canvas apps stay linked and keep their configured properties. Detail: [DOCUMENTATION.md §3.1](DOCUMENTATION.md).
+> **Updating:** bump the control `version` (`ControlManifest.Input.xml` + `ModernDataGrid/index.ts`) and the solution `<Version>` in `Solution/ID0008_ModernGrid/src/Other/Solution.xml`, then run `powershell -ExecutionPolicy Bypass -File scripts\package.ps1` (it builds, packages, copies the ZIPs to the repository root and verifies the identity, the versions and that the manifest declares no features or external services). Import the ZIP **again over the same solution** (`ID0008_ModernGrid`). The control namespace and publisher do not change, so existing canvas apps stay linked and keep their configured properties. Detail: [DOCUMENTATION.md §3.1](DOCUMENTATION.md).
 >
-> **Deleting:** a code component cannot unlink itself. The reference that blocks the deletion lives in the canvas app (and in the dependency Dataverse records), so remove the control from every app, save, **close and reopen** the app and **publish** it (or restore an earlier app version) before deleting the solution and, then, the publisher. Detail: [DOCUMENTATION.md §3.2](DOCUMENTATION.md).
+> **Deleting:** a code component cannot unlink itself. The reference that blocks the deletion lives in the canvas app (and in the dependency Dataverse records), so remove the control from every app, save, **close and reopen** the app and **publish** it (or restore an earlier app version) before deleting the solution and, then, the publisher. Check what is holding it with `powershell -ExecutionPolicy Bypass -File scripts\dependencias.ps1`. Detail: [DOCUMENTATION.md §3.2](DOCUMENTATION.md).
+>
+> **Packages:** `ID0008_ModernGrid_managed.zip` (use this one in target environments) and `ID0008_ModernGrid.zip` (unmanaged, for development). The root also keeps `ModernDataGrid*.zip`, the previous `ID0007` line, as a reference.
 
 ### Adding the Code Component to Your Canvas App
 1. Open your Canvas App in **Edit mode**.
@@ -100,4 +102,4 @@ window.__mdgPerfReport();   // console.table with the accumulated summary
 
 Details, counters and reference measurements: [DOCUMENTATION.md §9.6](DOCUMENTATION.md).
 
-**Current version:** solution `1.0.0.42` · control `0.0.55`.
+**Current version:** solution `1.0.0.0` (ID0008_ModernGrid) · control `0.0.56`.
