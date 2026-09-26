@@ -6,7 +6,7 @@ import DataGrid from "./components/DataGrid";
 
 export class ModernDataGrid implements ComponentFramework.ReactControl<IInputs, IOutputs> {
     /** Versión del control (debe coincidir con la del manifest); se registra al inicializar. */
-    private static readonly controlVersion = '0.0.54';
+    private static readonly controlVersion = '0.0.55';
     private container: HTMLDivElement;
     private notifyOutputChanged: () => void;
     /** Número de veces que el host ha pedido pintar el control (diagnóstico con `window.__mdgPerf`). */

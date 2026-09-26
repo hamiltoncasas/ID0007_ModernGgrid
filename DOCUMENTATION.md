@@ -10,12 +10,12 @@ Control de código (Power Apps Component Framework) que muestra un dataset de Da
 |---|---|
 | Nombre de la solución | `ID0007_ModernGrid` (nombre para mostrar `ID0007`) |
 | Publicador / prefijo | `ID0007` |
-| Versión de la solución | `1.0.0.41` |
+| Versión de la solución | `1.0.0.42` |
 | Control | `ID0007.ModernDataGrid` (constructor `ModernDataGrid`) |
-| Versión del control (manifest) | `0.0.54` |
+| Versión del control (manifest) | `0.0.55` |
 | Namespace | `ID0007` — **nunca** volver a `GUK` (ya existe `GUK.ModernDataGrid` de otro publicador y la importación falla) |
 
-> La versión del manifest (`0.0.54`) y la versión de la solución (`1.0.0.41`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
+> La versión del manifest (`0.0.55`) y la versión de la solución (`1.0.0.42`) son independientes. Para que Dataverse **actualice** la solución ya instalada, la versión de la solución debe ser mayor que la importada.
 
 ## 2. Requisitos
 
@@ -36,6 +36,43 @@ Solution\ModernDataGrid\bin\Release\ModernDataGrid.zip             (no gestionad
 2. Usar **solo** el ZIP recién generado (no descargas antiguas) y el **managed** para producción.
 3. Si ya tenías la versión anterior, la importación la actualiza siempre que la versión sea mayor.
 4. Tras importar, **cierra y vuelve a abrir** la app de lienzo para que el navegador descargue el nuevo `bundle.js` (si ves el comportamiento anterior, es caché).
+
+### 3.1 Actualizar el componente en la misma solución
+
+La actualización se hace **sobre la misma solución y el mismo publicador** (`ID0007_ModernGrid` / `ID0007`): solo hay que subir las dos versiones, recompilar y reimportar el ZIP.
+
+| Archivo | Qué se cambia |
+|---|---|
+| `ModernDataGrid/ControlManifest.Input.xml` | `version` del control (hoy `0.0.55`) |
+| `ModernDataGrid/index.ts` | `controlVersion` (el mismo número que el manifest) |
+| `Solution/ModernDataGrid/src/Other/Solution.xml` | `<Version>` de la solución (hoy `1.0.0.42`) |
+
+```powershell
+npm run build
+dotnet build 'Solution\ModernDataGrid\ModernDataGrid.cdsproj' -c Release
+```
+
+Como el **namespace y el publicador no cambian**, el nombre único del control (`ID0007_ID0007.ModernDataGrid`) sigue siendo el mismo: las apps de lienzo **continúan enlazadas y conservan sus propiedades**, y al cerrar y reabrir la app Power Apps ofrece **actualizar los componentes**. Publica las personalizaciones de la app para que el cambio quede guardado.
+
+> **Nunca** cambies el `namespace` del manifest ni el publicador si quieres conservar las apps actuales: eso registra un control nuevo (`ID0007.ModernDataGrid` → otro) y hay que insertarlo otra vez en cada pantalla, con sus propiedades desde cero.
+
+### 3.2 Eliminar el componente, la solución o el publicador
+
+El componente **no puede desvincularse por sí solo**: la referencia que bloquea el borrado vive en la **app de lienzo** (sus metadatos guardados en Dataverse) y en la **dependencia** que Dataverse registra de esa app al componente. El manifest del PCF no añade nada que se pueda quitar (no declara `feature-usage` ni `external-service-usage`), así que el bloqueo no se resuelve cambiando el control ni su publicador.
+
+Mientras exista esa dependencia, Dataverse impide borrar la solución (y, con ella, el publicador). Para liberarla:
+
+1. Abre **cada app** que use el control (Power Apps Studio) → **Vista de árbol** → en la pantalla, junto al componente: **… (Más) → Eliminar** → **Guardar**.
+2. **Cierra y vuelve a abrir la app**: Power Apps Studio solo recalcula los componentes al reabrir la app; borrar la instancia de la pantalla no reescribe por sí solo los metadatos guardados. Después **Publica** (Archivo → Guardar y publicar).
+3. Comprueba que tampoco queda como componente ni como origen de datos dentro de la app.
+4. Comprueba la dependencia: en el **Explorador de soluciones clásico**, selecciona el componente `ID0007` y mira la pestaña **Dependencias**: ahí aparece la app que lo retiene. Mientras siga listada, el borrado se bloqueará.
+5. Si la referencia se queda "pegada", la vía más fiable es **restaurar una versión de la app** anterior a haber insertado el control (App → Detalles → Versiones) o **eliminar la app**; con eso desaparece la dependencia.
+6. Borra en este orden: **apps → solución → publicador**.
+   - Solución: Maker → **Soluciones** → `ID0007_ModernGrid` → **Eliminar** (si está gestionada, **Desinstalar**) en el entorno donde se importó.
+   - Publicador: Maker → **Configuración avanzada** → **Publicadores** (o Soluciones → Publicadores) → `ID0007` → **Eliminar**.
+
+> Si alguna vez instalaste el control con `pac pcf push`, puede estar registrado bajo el publicador **Default** en lugar de `ID0007`: revísalo antes de borrar.
+> Referencia oficial: Microsoft Learn, *Code components for canvas apps* → sección *Delete a code component from a canvas app*.
 
 ## 4. Uso en la aplicación
 
@@ -1050,6 +1087,9 @@ El buscador, el selector de columnas, el **combo de vistas**, el refresco y la e
 | El filtro por columna no filtraba | Corregido en la versión de solución `1.0.0.17`; comprueba que importaste esa versión o superior |
 | No aparecía el botón de exportar / iconos vacíos | Corregido en `1.0.0.18` (barra con `flex-wrap`) y `1.0.0.20` (iconos SVG, sin depender de la fuente) |
 | Tras importar sigo viendo la versión anterior | Caché: cierra y vuelve a abrir la app. Además la importación solo actualiza si la versión de la solución es mayor |
+| No puedo eliminar la solución `ID0007_ModernGrid` ni el publicador `ID0007` | El bloqueo no está en el PCF: la referencia vive en la **app de lienzo** y en la dependencia que Dataverse registra. Borra el control de la app, guarda, **cierra y vuelve a abrir** la app y **publica**; si sigue, restaura una versión anterior de la app o elimínala. Procedimiento completo en §3.2 |
+| Borré el control de la app y sigue bloqueando la eliminación | Los metadatos del componente se recalculan al **cerrar y reabrir** la app y al **publicar**, no al borrar la instancia de la pantalla. Comprueba la pestaña **Dependencias** del componente en el Explorador de soluciones clásico (§3.2) |
+| Actualicé el componente y la app no muestra los cambios | Sube la `version` del manifest y la `<Version>` de la solución, reimporta el ZIP y **publica** las personalizaciones; después cierra y reabre la app (caché del `bundle.js`). Ver §3.1 |
 | La exportación no descarga el archivo | Usa Edge/Chrome actualizado y revisa que el navegador no bloquee descargas |
 | El combo de columnas se ve pequeño o con nombres | En `1.0.0.20` es un control de 2,5 rem de alto y **no muestra nombres**; si lo ves distinto, es una versión anterior o hay CSS del host interfiriendo |
 | Los colores de fila no se aplican | Revisa el nombre de la columna (nombre/alias/nombre para mostrar) y que el color sea válido; mira los avisos de la consola del navegador |
@@ -1146,6 +1186,7 @@ Todo está en `ModernDataGrid/components/DataGrid.css`:
 
 | Solución / control | Cambios |
 |---|---|
+| `1.0.0.42` / `0.0.55` | **Actualización de metadatos en la misma solución y publicador, sin cambios de funcionalidad.** Se suben la versión del control (`0.0.55`) y la de la solución (`1.0.0.42`) para poder reimportar el ZIP sobre `ID0007_ModernGrid`: el **namespace y el publicador no cambian**, así que el nombre único del control (`ID0007_ID0007.ModernDataGrid`) sigue siendo el mismo y las apps de lienzo continúan enlazadas conservando sus propiedades (al cerrar y reabrir la app, Power Apps ofrece actualizar los componentes). Se documenta cómo **actualizar** en la misma solución (§3.1) y cómo **liberar la referencia y eliminar** el componente, la solución y el publicador (§3.2): esa referencia vive en los metadatos de la app de lienzo y en la dependencia de Dataverse, **no** en el manifest del PCF (que no declara `feature-usage` ni `external-service-usage`), por lo que el bloqueo no se resuelve cambiando el control ni su publicador. Sin tocar el código: filtros (rango de fechas incluido), formatos, vistas, colores, paginación, selección, dataset y exportación quedan igual |
 | `1.0.0.41` / `0.0.54` | **Botón Aplicar en el rango de fechas, rango a la vista y filtrado mucho más rápido.** (1) El panel de las columnas de fecha incorpora los botones **Aplicar** y **Limpiar**: elegir días en el calendario ya **no** filtra la grilla (solo se escribe el modelo del panel), y el filtro entra al pulsar **Aplicar**, que además es instantáneo (se escribe el modelo del control en el mismo clic con `onFilterApplyClick` y el aviso diferido de PrimeReact, 300 ms, ya no repinta porque el modelo no cambió). (2) El panel muestra el rango elegido en texto (`Rango seleccionado: 22/09/2026 → 25/09/2026`, con una ayuda mientras falte un extremo) y en las fechas no hay selector `y`/`o` ni reglas adicionales. (3) **Rendimiento**: aplicar un filtro ya **no** revalida el dataset ni hace `notifyOutputChanged()` ni vuelve a mapear las filas (los filtros se aplican en cliente, así que `componentDidUpdate()` ya no trata `filtersChanged` como cambio estructural); antes, cada filtro aplicado costaba un viaje al host + un re-mapeo completo + un repintado, y eso es lo que hacía que el calendario tardara segundos por clic. (4) Al cambiar un filtro la vista vuelve a la **página 1** (`currentPage`/`pendingPage`) para no quedar en una página que ya no existe, y `onFilterChange()` ignora los avisos con el mismo modelo. Sin cambios de propiedades del manifest ni de formatos |
 | `1.0.0.40` / `0.0.53` | **Corregido: el filtro de rango de fechas no filtraba.** El valor del calendario se escribía solo en el estado interno del `DataTable` (`filterCallback`) mientras la grilla filtra con el modelo del control (`filters` + `onFilter`), así que el rango se veía en el calendario pero la tabla seguía mostrando todas las filas, el embudo no se marcaba activo y el contador *Filtrados* no cambiaba. Ahora el rango llega al modelo del control (`between` con `[inicioDelDía, finDelDía]`, ambos extremos incluidos) y la exportación a Excel filtra el mismo conjunto. En el panel de las columnas de fecha se retira el selector de operador `Coincidir todo / Coincidir con cualquiera` (`showFilterOperator`) y las reglas adicionales (`showAddButton`): en las fechas **solo existe la coincidencia total**, con una línea de ayuda en el panel. Sin cambios de propiedades del manifest |
 | `1.0.0.39` / `0.0.52` | **Operador `in` en los filtros de las vistas.** La clave `filtros` de `Views` acepta ahora `col in (v1,v2)` (también sin paréntesis y con el `in` en cualquier combinación de mayúsculas/minúsculas): es **una sola regla** cuyos valores, separados por **coma**, se combinan con **O**, así que ya se puede pedir `estado in (Programada,Despachada)` (antes había que hacerlo por exclusión con dos reglas `!=`, porque las reglas separadas por `;` se combinan con **Y**). Cada valor se compara igual que con `=` (sin distinguir mayúsculas ni acentos, y de forma numérica si es un número), los espacios alrededor se recortan y los valores pueden llevar espacios internos; una lista vacía (`in ()`) o un valor con `%` o paréntesis se ignora con el aviso de consola. No se añadió `not in`, y en las columnas de fecha el `in` compara contra el texto visible. Sin ningún otro cambio: las propiedades del manifest, los formatos, los filtros de columna, el rango de fechas, las vistas, los colores, la paginación, la selección, el dataset y la exportación quedan igual |

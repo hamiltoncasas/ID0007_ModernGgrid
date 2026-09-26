@@ -38,11 +38,15 @@ Use this skill to continue development of the Modern Data Grid PCF control in Po
 - Solution display name: `ID0007`
 - Publisher unique name, name, and description: `ID0007`
 - Publisher customization prefix: `ID0007`
-- Solution version: `1.0.0.41`
+- Solution version: `1.0.0.42`
 - PCF control name: `ID0007.ModernDataGrid`
 - PCF constructor: `ModernDataGrid`
 
 The namespace must remain `ID0007`. Never restore `GUK`; Dataverse already has `GUK.ModernDataGrid` owned by another publisher and importing it fails. If the identity changes, update both `Solution.xml` and `ControlManifest.Input.xml`, then rebuild the PCF before packaging.
+
+**Updating vs. re-branding.** To publish a new build into the *same* solution, only bump the two versions (manifest `version` + `Solution.xml` `<Version>`) and keep the namespace and the publisher: the control's unique name stays `ID0007_ID0007.ModernDataGrid`, so canvas apps remain linked and keep their configured properties (Power Apps asks to update the components when the app is reopened). Changing the namespace or the publisher registers a **different** control and forces re-inserting it in every screen, and it does **not** release the old link: apps keep depending on the previous component until they are cleaned up. Step by step: `DOCUMENTATION.md` §3.1.
+
+**Deleting is blocked by the app, not by the manifest.** A code component cannot unlink itself: the reference lives in the canvas app document (Dataverse) and in the dependency Dataverse records, so Dataverse refuses to delete the solution/publisher while an app still depends on the component. The manifest adds nothing removable to that link (no `feature-usage`, no `external-service-usage`). To release it: remove the control from every app, save, **close and reopen** the app (Power Apps Studio only recalculates components on reopen) and **publish** it — or restore an earlier app version / delete the app — and then delete in the order apps → solution → publisher. Full procedure: `DOCUMENTATION.md` §3.2.
 
 ## Implemented Features
 
@@ -226,7 +230,7 @@ After manifest, code, identity, or dependency changes:
 2. Run the MSBuild packaging command.
 3. Confirm both ZIPs exist.
 4. Inspect `solution.xml` inside both ZIPs.
-5. Confirm version `1.0.0.41`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
+5. Confirm version `1.0.0.42`, solution/publisher `ID0007`, and control `ID0007.ModernDataGrid`.
 6. Import only the newly generated ZIP, not an older download.
 
 The packager output must show:
@@ -239,7 +243,7 @@ The packager output must show:
 
 When adding a property, edit `ControlManifest.Input.xml`, run `npm run build` to regenerate manifest types, use the generated `IInputs` type, and rebuild the solution. Do not manually edit generated manifest types.
 
-The PCF version in the manifest, currently `0.0.54`, is separate from the four-part Dataverse solution version.
+The PCF version in the manifest, currently `0.0.55`, is separate from the four-part Dataverse solution version.
 
 Date formats are configured in exactly three properties (`DateFormats`, `DateTimeFormats`, `TimeFormats`) and each one applies **only** to columns whose data type matches it: `buildColumnFormat()` resolves the pattern with `findDateAssignment()` and ignores (with a one-off console warning) a column listed in a property of another type, so a mistake never changes another column's format. There is no global date-format property (the `DateFormat` enum was removed in `0.0.50`).
 
